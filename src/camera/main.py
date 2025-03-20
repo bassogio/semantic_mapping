@@ -2,6 +2,9 @@
 import rclpy
 from camera_processor import CameraProcessor
 from config_loader import load_config
+import sys
+
+sys.dont_write_bytecode = True # Stop creating __pycache__
 
 def main():
     rclpy.init()

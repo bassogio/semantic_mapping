@@ -1,0 +1,9 @@
+# Folder to ignore
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore __pycache__ folders
+__pycache__/
+*.pyc
+*.pyo
