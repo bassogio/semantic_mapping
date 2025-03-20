@@ -20,5 +20,8 @@ COPY config/ /workspace/config/
 
 RUN chmod +x /workspace/src/entrypoint.sh
 
+# Set the entrypoint script to run when the container starts
+ENTRYPOINT ["/entrypoint.sh"]
+
 CMD ["/bin/bash"]
 

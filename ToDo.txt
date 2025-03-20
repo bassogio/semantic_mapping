@@ -1,1 +1,2 @@
 in the config_loader files there is no more need to check if inside container or not
+fix entrypoint for container
