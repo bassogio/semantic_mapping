@@ -16,11 +16,9 @@ WORKDIR /workspace
 
 # Copy necessary application files to the container
 COPY src/ /workspace/src/
-COPY config /workspace/config/
+COPY config/ /workspace/config/
 
-# Copy the entrypoint script and make it executable
-COPY ./entrypoint/ /workspace/entrypoint/
-#RUN chmod +x /workspace/entrypoint.sh
+RUN chmod +x /workspace/src/entrypoint.sh
 
 CMD ["/bin/bash"]
 
