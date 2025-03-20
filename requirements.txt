@@ -1,0 +1,8 @@
+opencv-python
+numpy
+cv_bridge
+lark-parser
+netifaces
+pyyaml
+packaging
+pyrealsense2
