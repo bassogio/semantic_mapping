@@ -6,3 +6,4 @@ netifaces
 pyyaml
 packaging
 pyrealsense2
+matplotlib

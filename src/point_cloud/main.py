@@ -1,6 +1,11 @@
-#camera_parameters_from_data_main
+#point_cloud_main
+
+# Stop creating __pycache__
+import sys
+sys.dont_write_bytecode = True  
+
 import rclpy
-from camera_processor import CameraProcessor
+from point_cloud_processor import PointCloudProcessor
 from config_loader import load_config
 
 def main():
@@ -9,8 +14,8 @@ def main():
     # Load config
     config = load_config()
 
-    # Initialize CameraProcessor with config data
-    node = CameraProcessor(config=config)  # Pass the config as an argument
+    # Initialize PointCloudProcessor with config data
+    node = PointCloudProcessor(config=config)  # Pass the config as an argument
 
     try:
         rclpy.spin(node)
