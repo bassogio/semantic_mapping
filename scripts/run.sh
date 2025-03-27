@@ -14,6 +14,6 @@ docker run -it --rm \
     --privileged \
     -v /dev:/dev \
     -v /dev/bus/usb:/dev/bus/usb \
-    "$IMAGE_NAME" bash 
+    "$IMAGE_NAME" /workspace/entrypoint.sh 
 
 echo "Container $CONTAINER_NAME is running."

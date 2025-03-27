@@ -3,7 +3,8 @@ FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 
 RUN apt-get update && apt-get install -y \
     python3-pip \
-    usbutils 
+    usbutils \
+    ros-humble-sensor-msgs-py
 
 # Copy the requirements.txt file into the container
 COPY requirements.txt /workspace/
@@ -17,11 +18,12 @@ WORKDIR /workspace
 # Copy necessary application files to the container
 COPY src/ /workspace/src/
 COPY config/ /workspace/config/
+COPY entrypoint.sh /workspace/
 
-RUN chmod +x /workspace/src/entrypoint.sh
+# Set up the ROS environment to be sourced on each new shell session
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 
-# Set the entrypoint script to run when the container starts
-ENTRYPOINT ["/entrypoint.sh"]
+RUN chmod +x /workspace/entrypoint.sh
 
 CMD ["/bin/bash"]
 
