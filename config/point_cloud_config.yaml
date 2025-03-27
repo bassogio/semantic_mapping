@@ -1,13 +1,15 @@
 #point_cloud_configs
 point_cloud_processing:
   frame_id: "map"
-  max_distance: 6.0  # Maximum distance for depth clipping in meters
-  depth_image_topic: "/camera/depth/image_raw"
+  max_distance: 10.0  # Maximum distance for depth clipping in meters
   point_cloud_topic: "/camera/pointcloud"  
-  # depth_image_topic: "/davis/left/depth_image_raw"
-  # camera_parameters_topic: "/davis/left/camera_info"  
-  camera_parameters_topic: "/camera/CameraInfo"
+  # depth_image_topic: "/camera/depth/image_raw"
+  # camera_parameters_topic: "/camera/CameraInfo"
+  depth_image_topic: "/davis/left/depth_image_raw"
+  camera_parameters_topic: "/davis/left/camera_info"  
+  
   depth_scale: 0.01
+
   rotation_matrix:
     - [1, 0, 0]
     - [0, 0, -1]

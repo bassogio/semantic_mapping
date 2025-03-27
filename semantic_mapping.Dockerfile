@@ -4,7 +4,8 @@ FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 RUN apt-get update && apt-get install -y \
     python3-pip \
     usbutils \
-    ros-humble-sensor-msgs-py
+    ros-humble-sensor-msgs-py \
+    ros-humble-ros2bag
 
 # Copy the requirements.txt file into the container
 COPY requirements.txt /workspace/

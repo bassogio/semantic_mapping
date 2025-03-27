@@ -7,5 +7,3 @@ pyyaml
 packaging
 pyrealsense2
 matplotlib
-packaging
-pyyaml

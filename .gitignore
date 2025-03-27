@@ -1,4 +1,5 @@
 # Folder to ignore
+data/ 
 
 # Ignore VS Code settings
 .vscode/

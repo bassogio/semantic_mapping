@@ -14,6 +14,7 @@ docker run -it --rm \
     --privileged \
     -v /dev:/dev \
     -v /dev/bus/usb:/dev/bus/usb \
+    -v /home/orin_nano1/SemanticMapping-GiordanoBasso/data:/workspace/data \
     "$IMAGE_NAME" bash 
 
 echo "Container $CONTAINER_NAME is running."

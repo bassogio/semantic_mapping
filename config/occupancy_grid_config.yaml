@@ -1,0 +1,8 @@
+#occupancy_grid_config
+camera_processing:
+  color_image_topic: "/camera/color/image_raw" 
+  depth_image_topic: "/camera/depth/image_raw"
+  CameraInfo_topic: "/camera/CameraInfo"
+  timestamp_topic: "/camera/timestamp"
+  # Below is a topic used when playing a bag (along with parameters_topic and timestamp_topic)
+  #camera_info_topic: "/davis/left/camera_info"
