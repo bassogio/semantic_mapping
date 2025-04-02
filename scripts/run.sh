@@ -15,6 +15,6 @@ docker run -it --rm \
     -v /dev:/dev \
     -v /dev/bus/usb:/dev/bus/usb \
     -v /home/orin_nano1/SemanticMapping-GiordanoBasso/data:/workspace/data \
-    "$IMAGE_NAME" bash 
+    "$IMAGE_NAME" /workspace/entrypoint.sh
 
 echo "Container $CONTAINER_NAME is running."

@@ -1,25 +1,38 @@
 #!/bin/bash
 
-# Source ROS 2 environment setup
+# Stop all background processes on exit (including Ctrl+C)
+cleanup() {
+  echo "Cleaning up..."
+  kill ${PIDS[@]} 2>/dev/null
+  wait
+}
+trap cleanup EXIT
+
+# Source ROS 2 environment
 source /opt/ros/humble/setup.bash
 
-# Change to the data directory
+# Go to data directory
 cd /workspace/data
 
-# Play the RGB bag immediately
-ros2 bag play ros2_bag_data_dir --loop --rate 0.5 &
+# Start RGB bag playback
+ros2 bag play ros2_bag_data_dir --loop &
+PIDS+=($!)
 
-# Sleep for ~10.2 seconds to match the 5.1s timestamp offset 
+# Wait to align playback
 sleep 10.2
 
-# Then play the Depth bag
-ros2 bag play ros2_bag_gt_dir --loop --rate 0.5 &
+# Start Depth bag playback
+ros2 bag play ros2_bag_gt_dir --loop &
+PIDS+=($!)
 
+# Go back to project root
 cd ..
 
-# Start your Python node(s) in the background
-# python3 src/camera/main.py & 
+# Start Python nodes
+# python3 src/camera/main.py &
+# PIDS+=($!)
 python3 src/point_cloud/main.py &
+PIDS+=($!)
 
-# Wait for all background processes to finish
+# Wait for all background jobs
 wait
