@@ -1,19 +1,18 @@
 #point_cloud_configs
 point_cloud_processing:
   frame_id: "map"
-  max_distance: 10.0  # Maximum distance for depth clipping in meters
+  max_distance: 6.0  # Maximum distance for depth clipping in meters
   point_cloud_topic: "/camera/pointcloud"  
   # depth_image_topic: "/camera/depth/image_raw"
   # camera_parameters_topic: "/camera/CameraInfo"
   depth_image_topic: "/davis/left/depth_image_raw"
   camera_parameters_topic: "/davis/left/camera_info"  
-  
-  depth_scale: 0.01
 
+  depth_scale: 0.05
   rotation_matrix:
     - [1, 0, 0]
-    - [0, 0, -1]
-    - [0, -1, 0]
+    - [0, 1, 0]
+    - [0, 0, 1]
   
   # Add the translation matrix here (for moving in the z-direction, for example)
   translation_matrix:
@@ -21,3 +20,8 @@ point_cloud_processing:
     - [0, 1, 0, 0]   # No translation in y
     - [0, 0, 1, 0]   # No translation in z
     - [0, 0, 0, 1]   # Homogeneous coordinate
+
+
+    #     - [1, 0, 0]
+    # - [0, 0, -1]
+    # - [0, -1, 0]
