@@ -12,23 +12,23 @@ class PointCloudProcessor(rclpy.node.Node):
     def __init__(self, config):
         super().__init__('point_cloud_processor')
 
-        # Access the config under 'point_cloud_processing'
-        point_cloud_processing = config['point_cloud_processing']
-
         self.fx = None
         self.fy = None
         self.cx = None
         self.cy = None
 
+        # Access the config under 'point_cloud_processing'
+        self.point_cloud_processing = config['point_cloud_processing']
+
         # Load configuration parameters
-        self.depth_image_topic = point_cloud_processing['depth_image_topic']
-        self.camera_parameters_topic = point_cloud_processing['camera_parameters_topic']
-        self.point_cloud_topic = point_cloud_processing['point_cloud_topic']
-        self.max_distance = point_cloud_processing['max_distance']
-        self.depth_scale = point_cloud_processing['depth_scale']
+        self.depth_image_topic = self.point_cloud_processing['depth_image_topic']
+        self.camera_parameters_topic = self.point_cloud_processing['camera_parameters_topic']
+        self.point_cloud_topic = self.point_cloud_processing['point_cloud_topic']
+        self.max_distance = self.point_cloud_processing['max_distance']
+        self.depth_scale = self.point_cloud_processing['depth_scale']
 
         # Load the rotation matrix from the config
-        rotation_matrix_config = point_cloud_processing['rotation_matrix']
+        rotation_matrix_config = self.point_cloud_processing['rotation_matrix']
         self.rotation_matrix = np.array(rotation_matrix_config)
 
         # Declare parameters for ROS 2
@@ -103,7 +103,7 @@ class PointCloudProcessor(rclpy.node.Node):
             points_rotated = points @ self.rotation_matrix.T
 
             # Publish the rotated point cloud
-            self.publisher.publish_point_cloud(points_rotated)
+            self.publisher.publish_point_cloud(points, self.point_cloud_processing)
 
             # Log debug information
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")

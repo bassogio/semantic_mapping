@@ -1,13 +1,8 @@
-# Folder to ignore
 data/ 
-
-# Ignore VS Code settings
 .vscode/
-
-# Ignore __pycache__ folders
 __pycache__/
 *.pyc
 *.pyo
-
-# Ignore my To-Do list
+*.pdf
+*.gv
 ToDo.txt

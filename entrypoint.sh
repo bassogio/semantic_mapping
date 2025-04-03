@@ -6,7 +6,7 @@ cleanup() {
   kill ${PIDS[@]} 2>/dev/null
   wait
 }
-trap cleanup EXIT
+trap cleanup
 
 # Source ROS 2 environment
 source /opt/ros/humble/setup.bash
@@ -31,8 +31,8 @@ cd ..
 # Start Python nodes
 # python3 src/camera/main.py &
 # PIDS+=($!)
-python3 src/point_cloud/main.py &
-PIDS+=($!)
+# python3 src/point_cloud/main.py &
+# PIDS+=($!)
 
 # Wait for all background jobs
 wait

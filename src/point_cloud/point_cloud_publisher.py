@@ -17,12 +17,12 @@ class PointCloudPublisher(Node):
         # Initialize publisher for PointCloud2
         self.point_cloud_pub = self.create_publisher(PointCloud2, point_cloud_topic, 10)
 
-    def publish_point_cloud(self, point_cloud):
+    def publish_point_cloud(self, point_cloud, point_cloud_processing):
         """Format the point cloud and publish."""
         # Create PointCloud2 message
         header = std_msgs.msg.Header()
         header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = 'map'  # Use the correct frame ID for your setup
+        header.frame_id = point_cloud_processing['frame_id']
 
         # Convert the point cloud to PointCloud2 format
         pc_data = pc2.create_cloud_xyz32(header, point_cloud)
