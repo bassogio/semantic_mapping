@@ -103,7 +103,7 @@ class PointCloudProcessor(rclpy.node.Node):
             points_rotated = points @ self.rotation_matrix.T
 
             # Publish the rotated point cloud
-            self.publisher.publish_point_cloud(points, self.point_cloud_processing)
+            self.publisher.publish_point_cloud(points_rotated, self.point_cloud_processing)
 
             # Log debug information
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")
