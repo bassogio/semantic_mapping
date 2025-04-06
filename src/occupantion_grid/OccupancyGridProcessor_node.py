@@ -22,8 +22,8 @@ class OccupancyGridMapper(Node):
 
         # Grid parameters
         self.grid_resolution = 0.1  # Grid cell size in meters
-        self.grid_size = 100  # Number of cells in each dimension
-        self.grid_origin = (-5.0, -5.0)  # Origin of the grid in meters
+        self.grid_size = 1000  # Number of cells in each dimension
+        self.grid_origin = (-50.0, -50.0)  # Origin of the grid in meters
 
     def point_cloud_callback(self, msg):
         """Convert PointCloud2 data to an occupancy grid and publish it."""
@@ -60,7 +60,7 @@ class OccupancyGridMapper(Node):
 
         # Publish the occupancy grid
         self.occupancy_pub.publish(occ_grid_msg)
-        self.get_logger().info("Published Occupancy Grid with Z > 0.5")
+        self.get_logger().info("Published Occupancy Grid with Z > 0.1")
 
 def main(args=None):
     rclpy.init(args=args)

@@ -12,8 +12,8 @@ point_cloud_processing:
 
   rotation_matrix:
     - [1, 0, 0]
-    - [0, 1, 0]
     - [0, 0, 1]
+    - [0, -1, 0]
   
   # Add the translation matrix here (for moving in the z-direction, for example)
   translation_matrix:

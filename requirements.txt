@@ -9,3 +9,5 @@ pyrealsense2
 matplotlib
 packaging
 pyyaml
+transformers
+torch
