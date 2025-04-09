@@ -1,6 +1,6 @@
 # Use Dusty-NV's container as a base
 FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
-FROM dustynv/transformers:git-r35.2.1
+# FROM dustynv/transformers:git-r35.2.1
 
 RUN apt-get update && apt-get install -y \
     python3-pip \

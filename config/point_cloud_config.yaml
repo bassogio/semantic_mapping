@@ -7,13 +7,14 @@ point_cloud_processing:
   # camera_parameters_topic: "/camera/CameraInfo"
   depth_image_topic: "/davis/left/depth_image_raw"
   camera_parameters_topic: "/davis/left/camera_info"  
+  pose_topic: "/davis/left/pose"
 
   depth_scale: 1.0
 
   rotation_matrix:
     - [1, 0, 0]
+    - [0, 1, 0]
     - [0, 0, 1]
-    - [0, -1, 0]
   
   # Add the translation matrix here (for moving in the z-direction, for example)
   translation_matrix:
