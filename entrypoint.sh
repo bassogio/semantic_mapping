@@ -15,16 +15,18 @@ source /opt/ros/humble/setup.bash
 cd /workspace/data
 
 # Start RGB bag playback
-ros2 bag play ros2_bag_data_dir --loop --clock &
+# ros2 bag play ros2_bag_data_dir --loop --clock &
+ros2 bag play ros2_bag_data_dir --clock &
+
 PIDS+=($!)
 
 # Wait to align playback
 # sleep 10.2
-# sleep 5.1
-
+sleep 5.1
 
 # Start Depth bag playback
-ros2 bag play ros2_bag_gt_dir --loop --clock &
+# ros2 bag play ros2_bag_gt_dir --loop --clock &
+ros2 bag play ros2_bag_gt_dir --clock &
 PIDS+=($!)
 
 # Go back to project root

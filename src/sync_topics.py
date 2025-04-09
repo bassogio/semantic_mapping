@@ -1,40 +1,52 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-
 from sensor_msgs.msg import Image
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 
-class ImageDepthSyncNode(Node):
+class SyncNode(Node):
     def __init__(self):
-        super().__init__('image_depth_sync_node')
-
-        # Set up subscribers to the image and depth topics
+        super().__init__('sync_node')
+        # Create message_filters Subscribers for the specified topics.
+        self.depth_sub = Subscriber(self, Image, '/davis/left/depth_image_raw')
         self.image_sub = Subscriber(self, Image, '/davis/left/image_raw')
-        self.depth_image_sub = Subscriber(self, Image, '/davis/left/depth_image_raw')
 
-        # Use ApproximateTimeSynchronizer to sync the two streams
-        self.ts = ApproximateTimeSynchronizer(
-            [self.image_sub, self.depth_image_sub],
-            queue_size=10,
-            slop=0.1  # 50 ms tolerance
+        # Create an ApproximateTimeSynchronizer to synchronize the two topics.
+        # Adjust `queue_size` and `slop` as needed. 'slop' defines the allowable time difference (in seconds).
+        self.sync = ApproximateTimeSynchronizer(
+            [self.depth_sub, self.image_sub],
+            queue_size=50,
+            slop=0.1
         )
-        self.ts.registerCallback(self.synced_callback)
+        self.sync.registerCallback(self.callback)
 
-    def synced_callback(self, image_msg, depth_msg):
+    def callback(self, depth_msg, image_msg):
+        # This callback is called when a pair of messages has been synchronized.
+        self.get_logger().info("Synchronized messages received!")
+        
+        # Logging timestamps for illustration (timestamps in seconds.nanoseconds)
+        depth_stamp = depth_msg.header.stamp
+        image_stamp = image_msg.header.stamp
         self.get_logger().info(
-            f"Received synced image + depth: "
-            f"RGB stamp = {image_msg.header.stamp.sec}.{image_msg.header.stamp.nanosec}, "
-            f"Depth stamp = {depth_msg.header.stamp.sec}.{depth_msg.header.stamp.nanosec}"
+            f"Depth Timestamp: {depth_stamp.sec}.{depth_stamp.nanosec}"
         )
-        # Add your image + depth processing logic here
+        self.get_logger().info(
+            f"Image Timestamp: {image_stamp.sec}.{image_stamp.nanosec}"
+        )
+        # Process the messages further as needed.
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ImageDepthSyncNode()
-    
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = SyncNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Keyboard Interrupt, shutting down node.")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
+
+

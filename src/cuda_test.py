@@ -1,39 +1,29 @@
-#!/usr/bin/env python3
-
 import torch
-import subprocess
-
-def check_torch_cuda():
-    """Check CUDA availability using PyTorch."""
-    if torch.cuda.is_available():
-        print("CUDA is available in PyTorch.")
-        num_devices = torch.cuda.device_count()
-        print(f"Number of GPUs detected by PyTorch: {num_devices}")
-        for i in range(num_devices):
-            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
-    else:
-        print("CUDA is not available in PyTorch.")
-
-def check_nvidia_smi():
-    """Check GPU details using the nvidia-smi command."""
-    try:
-        output = subprocess.check_output(['nvidia-smi'], univeUsing device: cpu
-Output shape: torch.Size([1, 16, 32, 32])
-rsal_newlines=True)
-        print("\nOutput from nvidia-smi:\n")
-        print(output)
-    except FileNotFoundError:
-        print("nvidia-smi command not found. Is the NVIDIA driver installed?")
-    except Exception as e:
-        print(f"An error occurred while running nvidia-smi: {e}")
 
 def main():
-    print("=== CUDA Check ===\n")
-    print("Checking CUDA availability using PyTorch:")
-    check_torch_cuda()
-    
-    print("\nChecking GPU details with nvidia-smi:")
-    check_nvidia_smi()
+    # Check if CUDA is available
+    if torch.cuda.is_available():
+        print("CUDA is available!")
+        device_count = torch.cuda.device_count()
+        print(f"Found {device_count} GPU(s):")
+        
+        # List each detected GPU device and its name
+        for i in range(device_count):
+            gpu_name = torch.cuda.get_device_name(i)
+            print(f"GPU {i}: {gpu_name}")
+        
+        # Choose the first GPU device
+        device = torch.device("cuda:0")
+        
+        # Create sample tensors on the GPU and perform a simple addition
+        a = torch.tensor([1.0, 2.0, 3.0], device=device)
+        b = torch.tensor([10.0, 20.0, 30.0], device=device)
+        result = a + b
+        
+        # Print the result of the tensor addition
+        print("Tensor addition result on GPU:", result)
+    else:
+        print("CUDA is not available. Please check your Docker GPU settings.")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

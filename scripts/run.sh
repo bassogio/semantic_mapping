@@ -12,6 +12,7 @@ docker run -it --rm \
     --runtime nvidia \
     --network host \
     --privileged \
+    --gpus all \
     -v /dev:/dev \
     -v /dev/bus/usb:/dev/bus/usb \
     -v /home/orin_nano1/SemanticMapping-GiordanoBasso/data:/workspace/data \
