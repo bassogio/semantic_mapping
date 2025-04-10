@@ -5,12 +5,11 @@ from cv_bridge import CvBridge
 from clipseg_processor import CLIPsegProcessor
 import cv2 as cv
 import numpy as np
-import torch
 
 class CLIPsegPublisher(Node):
-    def __init__(self):
+    def __init__(self, device):
         super().__init__("CLIPseg_segmentation_processor")
-
+        self.device = device
         self.logger = self.get_logger()
         self.bridge = CvBridge()
 
@@ -24,19 +23,15 @@ class CLIPsegPublisher(Node):
         self.prompts = [label['name'] for label in self.labels]
         self.label_colors = {label['id']: label['color'] for label in self.labels}
 
-        # Initialize CLIPsegProcessor
-        self.processor = CLIPsegProcessor(self.prompts)
+        # Initialize CLIPsegProcessor with device
+        self.processor = CLIPsegProcessor(self.prompts, self.device)
         self.logger.info("CLIPsegPublisher node initialized.")
 
     def color_image_callback(self, msg):
-        """Callback function for processing images."""
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
             segmented_image = self.processor.process_image(cv_image, self.label_colors)
 
-            # Display and publish segmented image
-            cv.imshow("Combined Segmentation", segmented_image)
-            cv.waitKey(1)
             ros_image = self.bridge.cv2_to_imgmsg(segmented_image, "bgr8")
             self.segmented_image_pub.publish(ros_image)
         except Exception as e:

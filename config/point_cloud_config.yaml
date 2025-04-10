@@ -8,22 +8,4 @@ point_cloud_processing:
   depth_image_topic: "/davis/left/depth_image_raw"
   camera_parameters_topic: "/davis/left/camera_info"  
   pose_topic: "/davis/left/pose"
-
   depth_scale: 1.0
-
-  rotation_matrix:
-    - [1, 0, 0]
-    - [0, 1, 0]
-    - [0, 0, 1]
-  
-  # Add the translation matrix here (for moving in the z-direction, for example)
-  translation_matrix:
-    - [1, 0, 0, 0]   # No translation in x
-    - [0, 1, 0, 0]   # No translation in y
-    - [0, 0, 1, 0]   # No translation in z
-    - [0, 0, 0, 1]   # Homogeneous coordinate
-
-
-    #     - [1, 0, 0]
-    # - [0, 0, -1]
-    # - [0, -1, 0]

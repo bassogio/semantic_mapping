@@ -5,6 +5,8 @@ FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 RUN apt-get update && apt-get install -y \
     python3-pip \
     usbutils \
+    libopenblas-base \
+    libopenmpi-dev \
     ros-humble-sensor-msgs-py \
     ros-humble-ros2bag
 

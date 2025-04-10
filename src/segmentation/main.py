@@ -5,7 +5,7 @@ import torch
 def main(args=None):
     """Main function to initialize and spin the node."""
     rclpy.init(args=args)
-    
+
     # Check if GPU is available and set the device
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -13,9 +13,9 @@ def main(args=None):
     else:
         device = torch.device("cpu")
         print("Using CPU for computation.")
-    
-    # Pass the device information to the node if necessary
-    node = CLIPsegPublisher(device=device)  # Assuming `CLIPsegPublisher` accepts a `device` parameter
+
+    # Create and spin the node with device info
+    node = CLIPsegPublisher(device=device)
 
     try:
         rclpy.spin(node)
