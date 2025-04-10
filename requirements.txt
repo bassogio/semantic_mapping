@@ -9,3 +9,4 @@ pyrealsense2
 matplotlib
 transformers
 torch
+torchvision

@@ -1,4 +1,4 @@
-#point_cloud_configs
+#point_cloud_config
 point_cloud_processing:
   frame_id: "map"
   max_distance: 30.0  # Maximum distance for depth clipping in meters

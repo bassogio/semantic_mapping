@@ -7,8 +7,8 @@ class CLIPsegProcessor:
     def __init__(self, prompts, device):
         self.prompts = prompts
         self.device = device
-        self.processor = ClipProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
-        self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined", use_fast=True).to(self.device)
+        self.processor = ClipProcessor.from_pretrained("CIDAS/clipseg-rd64-refined", use_fast=True)
+        self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined").to(self.device)
 
     def process_image(self, cv_image, label_colors):
         inputs = self.processor(text=self.prompts, images=[cv_image] * len(self.prompts), return_tensors="pt")
