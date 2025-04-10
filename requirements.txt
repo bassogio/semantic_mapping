@@ -6,7 +6,6 @@ netifaces
 pyyaml
 packaging
 pyrealsense2
-matplotlib
 transformers
 torch
 torchvision
