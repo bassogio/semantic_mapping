@@ -3,6 +3,6 @@ rotate_pose_processing:
   frame_id: "map"
   pose_topic: "/davis/left/pose"
   rotate_pose_topic: "/davis/rotated_pose"
-  roll: 0.0    # rotation around x-axis in degrees
-  pitch: 0.0   # rotation around y-axis in degrees
-  yaw: 0.0     # rotation around z-axis in degrees
+  roll: 270.0    # rotation around x-axis (red axis) in degrees
+  pitch: 7.0   # rotation around y-axis (green axis) in degrees
+  yaw: 0.0     # rotation around z-axis (blue axis) in degrees

@@ -28,7 +28,7 @@ class PointCloudProcessor(rclpy.node.Node):
         self.pose_y = 0.0
         self.pose_z = 0.0
 
-        # Access the config under 'point_cloud_processing'
+        # Access the config 
         self.point_cloud_processing = config['point_cloud_processing']
 
         # Load configuration parameters
