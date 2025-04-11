@@ -79,11 +79,7 @@ This call removes the current visual markers from RViz and resets the stored pat
 
 Launch RViz2 with:
 
-  
-
-rviz2
-
-  
+    rviz2
 
 3.  **Configure RViz Displays**
 
