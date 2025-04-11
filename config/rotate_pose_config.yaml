@@ -1,9 +1,8 @@
-#rotate_pose_config
+# rotate_pose_config.yaml
 rotate_pose_processing:
   frame_id: "map"
   pose_topic: "/davis/left/pose"
   rotate_pose_topic: "/davis/rotated_pose"
-  rotation_matrix:
-  - [1, 0, 0]
-  - [0, 1, 0]
-  - [0, 0, 1]
+  roll: 0.0    # rotation around x-axis in degrees
+  pitch: 0.0   # rotation around y-axis in degrees
+  yaw: 0.0     # rotation around z-axis in degrees
