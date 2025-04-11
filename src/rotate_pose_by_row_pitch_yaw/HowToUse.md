@@ -33,11 +33,14 @@ If you wish to manually clear the markers and reset the internal path history, y
 This call removes the current visual markers from RViz and resets the stored path so that the new path starts fresh.
 
 ## Visualizing in RViz
-1. **Start RViz2**
-Launch RViz2 with:
+
+ 1. **Start RViz2**
+ Launch RViz2 with:
+ 
 
     rviz2
-3. **Configure RViz Displays**
+
+ 3. **Configure RViz Displays**
  - **Marker Display:**
 Add a Marker display and set its topic to visualization_marker to see the trajectory rendered as a line strip.
  - **Pose Display (Optional):**
