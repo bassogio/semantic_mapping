@@ -139,7 +139,7 @@ class PointCloudProcessor(rclpy.node.Node):
             
             # Now apply the translation from the pose (after rotation)
             translation = np.array([self.pose_x, self.pose_y, self.pose_z])
-            points_transformed = points_rotated + translation
+            points_transformed = points_rotated + translation 
 
             # Publish the rotated point cloud
             self.publisher.publish_point_cloud(points_transformed, self.point_cloud_processing)

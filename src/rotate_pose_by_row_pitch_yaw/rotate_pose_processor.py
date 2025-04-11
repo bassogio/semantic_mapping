@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped, Point
 import numpy as np
 from rotate_pose_publisher import RotatePosePublisher
 from transforms3d.euler import euler2mat
+from transforms3d.quaternions import quat2mat, mat2quat
 from rcl_interfaces.msg import SetParametersResult
 from visualization_msgs.msg import Marker
 from std_srvs.srv import Trigger
@@ -93,8 +94,10 @@ class RotatePoseProcessor(Node):
         return SetParametersResult(successful=True)
 
     def rotate_pose_callback(self, msg):
-        """Apply the rotation to the pose, publish the rotated pose, and update the path marker."""
+        """Apply the rotation to the pose (position and orientation),
+        publish the rotated pose, and update the path marker."""
         try:
+            # --- Process Position Rotation ---
             # Extract original pose position
             pose_x = msg.pose.position.x
             pose_y = msg.pose.position.y
@@ -112,17 +115,47 @@ class RotatePoseProcessor(Node):
             rotated_msg.pose.position.y = float(rotated_position[1])
             rotated_msg.pose.position.z = float(rotated_position[2])
 
-            # Publish the rotated pose message
+            # --- Process Orientation Rotation ---
+            # Extract the original quaternion from ROS (x, y, z, w)
+            # and convert it into transforms3d order [w, x, y, z]
+            orig_quat = [
+                msg.pose.orientation.w,
+                msg.pose.orientation.x,
+                msg.pose.orientation.y,
+                msg.pose.orientation.z
+            ]
+
+            # Convert the original quaternion to a 3x3 rotation matrix
+            orig_orientation_matrix = quat2mat(orig_quat)
+
+            # Apply the custom rotation on the original orientation.
+            # This multiplies the rotation matrices so that the new orientation
+            # is the result of applying self.rotation_matrix to the original orientation.
+            rotated_orientation_matrix = self.rotation_matrix.dot(orig_orientation_matrix)
+
+            # Convert the new rotation matrix back into a quaternion.
+            # The returned quaternion is in the order [w, x, y, z].
+            new_quat = mat2quat(rotated_orientation_matrix)
+
+            # Assign the new quaternion to the rotated pose message.
+            # Note: Convert back to ROS order (x, y, z, w)
+            rotated_msg.pose.orientation.x = new_quat[1]
+            rotated_msg.pose.orientation.y = new_quat[2]
+            rotated_msg.pose.orientation.z = new_quat[3]
+            rotated_msg.pose.orientation.w = new_quat[0]
+
+            # --- Publish the Updated Pose and Visualize ---
+            # Publish the rotated pose message with both rotated position and orientation.
             self.publisher.publish_rotate_pose(rotated_msg)
 
-            # Append current rotated position to the path history
+            # Append current rotated position to the path history for visualization.
             pt = Point()
             pt.x = rotated_msg.pose.position.x
             pt.y = rotated_msg.pose.position.y
             pt.z = rotated_msg.pose.position.z
             self.path_points.append(pt)
 
-            # Create and publish a line strip marker to visualize the path history
+            # Create and publish a line strip marker to visualize the path history.
             path_marker = Marker()
             path_marker.header.frame_id = self.frame_id
             path_marker.header.stamp = self.get_clock().now().to_msg()
@@ -130,9 +163,8 @@ class RotatePoseProcessor(Node):
             path_marker.id = 1
             path_marker.type = Marker.LINE_STRIP
             path_marker.action = Marker.ADD
-            # Use the accumulated points as the path
             path_marker.points = self.path_points
-            path_marker.scale.x = 0.05  # width of the line
+            path_marker.scale.x = 0.05  # line width
             path_marker.color.r = 0.0
             path_marker.color.g = 1.0
             path_marker.color.b = 0.0
@@ -140,8 +172,8 @@ class RotatePoseProcessor(Node):
             path_marker.lifetime.sec = 0  # persists indefinitely
 
             self.marker_pub.publish(path_marker)
+            self.get_logger().debug("Published rotated pose (position and orientation) and path marker.")
 
-            self.get_logger().debug("Published rotated pose and path marker.")
         except Exception as e:
             self.get_logger().error(f"Error in rotate_pose_callback: {e}")
 
@@ -153,7 +185,7 @@ class RotatePoseProcessor(Node):
         """
         self.get_logger().info("Clearing markers and resetting path history...")
         
-        # Publish a DELETE marker to remove the current path marker
+        # Publish a DELETE marker to remove the current path marker.
         delete_marker = Marker()
         delete_marker.header.frame_id = self.frame_id
         delete_marker.header.stamp = self.get_clock().now().to_msg()
@@ -162,7 +194,7 @@ class RotatePoseProcessor(Node):
         delete_marker.action = Marker.DELETE
         self.marker_pub.publish(delete_marker)
         
-        # Reset the internal path history
+        # Reset the internal path history.
         self.path_points = []
 
         response = Trigger.Response()
