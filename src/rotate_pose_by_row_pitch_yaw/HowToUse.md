@@ -6,6 +6,7 @@ This document explains how to run the Rotate Pose Processor node, adjust rotatio
 ## Launch the Node
 Run the node with the following command:
 
+
     python3 main.py
 
 This starts the node, which subscribes to an incoming pose topic, applies the rotation defined by roll, pitch, and yaw (in degrees), and publishes the rotated pose along with its trajectory path.
@@ -18,9 +19,9 @@ The node uses ROS 2 parameters for the rotation values. These parameters are int
 
 To update these values while the node is running, open a new terminal and use the following commands:
 
-`ros2 param set /rotate_pose_processor roll 10.0`
-`ros2 param set /rotate_pose_processor pitch 20.0`
-`ros2 param set /rotate_pose_processor yaw 30.0`
+    ros2 param set /rotate_pose_processor roll 10.0
+    ros2 param set /rotate_pose_processor pitch 20.0
+    ros2 param set /rotate_pose_processor yaw 30.0
 
 **Note**: Every time a parameter is updated, the node logs the new raw values, recomputes the rotation matrix, and automatically clears the current path history.
 
@@ -35,7 +36,9 @@ This call removes the current visual markers from RViz and resets the stored pat
 
  1. **Start RViz2**
 Launch RViz2 with:
- `rviz2`
+
+rviz2
+
  2. **Configure RViz Displays**
  - **Marker Display:**
 Add a Marker display and set its topic to visualization_marker to see the trajectory rendered as a line strip.
