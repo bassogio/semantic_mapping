@@ -35,11 +35,11 @@ This call removes the current visual markers from RViz and resets the stored pat
 ## Visualizing in RViz
 
  1. **Start RViz2**
-Launch RViz2 with:
+ Launch RViz2 with:
 
-rviz2
+    rviz2
 
- 2. **Configure RViz Displays**
+ 3. **Configure RViz Displays**
  - **Marker Display:**
 Add a Marker display and set its topic to visualization_marker to see the trajectory rendered as a line strip.
  - **Pose Display (Optional):**
