@@ -7,5 +7,4 @@ pyyaml
 packaging
 pyrealsense2
 transformers
-torch
-torchvision
+# torch and torchvision are installed separately with Jetson-compatible builds

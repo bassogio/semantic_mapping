@@ -1,6 +1,5 @@
 # Use Dusty-NV's container as a base
 FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
-# FROM dustynv/transformers:git-r35.2.1
 
 RUN apt-get update && apt-get install -y \
     python3-pip \
@@ -9,6 +8,10 @@ RUN apt-get update && apt-get install -y \
     libopenmpi-dev \
     ros-humble-sensor-msgs-py \
     ros-humble-ros2bag
+
+# Clone the torchvision repository and install from source
+RUN git clone https://github.com/pytorch/vision.git && \
+    cd vision && pip install -e . && cd ..
 
 # Copy the requirements.txt file into the container
 COPY requirements.txt /workspace/

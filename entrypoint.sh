@@ -23,7 +23,7 @@ PIDS+=($!)
 # Wait to align playback
 # sleep 10.2
 sleep 5.1
-
+z
 # Start Depth bag playback
 # ros2 bag play ros2_bag_gt_dir --loop --clock &
 ros2 bag play ros2_bag_gt_dir --clock &

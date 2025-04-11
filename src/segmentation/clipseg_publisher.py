@@ -18,8 +18,12 @@ class CLIPsegPublisher(Node):
         self.segmented_image_pub = self.create_publisher(Image, '/camera/segmented_image', 10)
 
         # Labels and prompts
-        self.labels = [{'name': 'floor', 'id': 0, 'color': (255, 0, 0)},
-                       {'name': 'person', 'id': 1, 'color': (0, 255, 0)}]
+        self.labels = [
+            {'name': 'floor', 'id': 0, 'color': (255, 0, 0)},
+            {'name': 'person', 'id': 1, 'color': (0, 255, 0)},
+            {'name': 'dog', 'id': 2, 'color': (0, 0, 255)},
+            {'name': 'bottle', 'id': 3, 'color': (125, 125, 0)},
+            {'name': 'ball', 'id': 4, 'color': (0, 125, 125)}]
         self.prompts = [label['name'] for label in self.labels]
         self.label_colors = {label['id']: label['color'] for label in self.labels}
 

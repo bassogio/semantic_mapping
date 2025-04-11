@@ -2,11 +2,17 @@
 segmentation_processing:
   frame_id: "map"
   segmentation_topic: "/camera/segmentation"  
-  # raw_image_topic: "/camera/color/image_raw"
-  # camera_parameters_topic: "/camera/CameraInfo"
-  raw_image_topic: "/davis/left/image_raw"
-  camera_parameters_topic: "/davis/left/camera_info"  
+  color_image_topic: "/camera/color/image_raw"
+  camera_parameters_topic: "/camera/CameraInfo"
+  # color_image_topic: "/davis/left/image_raw"
+  # camera_parameters_topic: "/davis/left/camera_info"  
   labels:
+    - name: ball
+      id: 0
+      color: [128, 64, 128]
+    - name: bottle
+      id: 8
+      color: [107, 142, 35]
     # - name: road
     #   id: 0
     #   color: [128, 64, 128]
@@ -66,4 +72,4 @@ segmentation_processing:
     #   color: [119, 11, 32]
     - name: void
       id: 29
-      color: [0, 0, 0]
+      color: [255, 255, 255]
