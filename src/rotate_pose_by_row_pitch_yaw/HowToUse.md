@@ -45,11 +45,11 @@ To update these values while the node is running, open a new terminal and use th
 
   
 
-ros2 param set /rotate_pose_processor roll 10.0
-
-ros2 param set /rotate_pose_processor pitch 20.0
-
-ros2 param set /rotate_pose_processor yaw 30.0
+    ros2 param set /rotate_pose_processor roll 10.0
+    
+    ros2 param set /rotate_pose_processor pitch 20.0
+    
+    ros2 param set /rotate_pose_processor yaw 30.0
 
   
 
