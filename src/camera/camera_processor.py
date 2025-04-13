@@ -1,28 +1,16 @@
 # -----------------------------------
 # Import Statements
 # -----------------------------------
-import os       # For file path operations.
-import yaml     # For loading configuration files.
+import os       
+import yaml     
 import pyrealsense2 as rs
 import numpy as np
-from cv_bridge import CvBridge
-
-
-import rclpy    # ROS2 Python client library.
-from rclpy.node import Node  # Base class for ROS2 nodes.
-
 import cv2
-import rclpy
-from rclpy.node import Node
+from cv_bridge import CvBridge
+import rclpy    
+from rclpy.node import Node  
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
-from camera_publisher import CameraPublisher
-from rclpy.node import Node
-from std_msgs.msg import String
-from sensor_msgs.msg import CameraInfo
-from sensor_msgs.msg import Image
-
-
 
 # -----------------------------------
 # Configuration Loader Function
@@ -47,28 +35,13 @@ def load_config():
 # -----------------------------------
 # ROS2 Node Definition
 # -----------------------------------
-class GeneralTaskNode(Node):
-    """
-    A generic ROS2 node that demonstrates header management, multiple publishers/subscribers,
-    and optional service functionality.
-
-    This node:
-      - Loads configuration parameters from the configuration file section ("node_config").
-      - Declares ROS2 parameters for runtime introspection.
-      - Creates two publishers and two subscribers for PoseStamped messages.
-      - Processes each incoming message by updating the header (with the current timestamp and
-        configured frame_id) and publishing the processed message.
-      - Optionally provides a service server (using std_srvs/Trigger) if enabled.
-    """
+class CameraNode(Node):
     def __init__(self, config):
         # Initialize the node with a unique name.
-        super().__init__('general_task_node')
+        super().__init__('camera_node')
         
         # -------------------------------------------
         # Access the configuration section.
-        #
-        # The configuration file (config.yaml) should include a top-level key "node_config" with your
-        # node's parameters (e.g., publisher_topic, subscriber_topic, etc.).
         # -------------------------------------------
         self.node_config = config['node_config']
         

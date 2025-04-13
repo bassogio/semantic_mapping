@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Generic ROS2 Node Template with Multiple Publishers and Subscribers,
 Optional Service, and Header Handling
@@ -102,16 +103,6 @@ class GeneralTaskNode(Node):
         self.declare_parameter('frame_id', self.frame_id)
         
         # -------------------------------------------
-        # Retrieve final parameter values from the parameter server.
-        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
-        # -------------------------------------------
-        self.publisher_topic  = self.get_parameter('publisher_topic').value
-        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
-        self.subscriber_topic  = self.get_parameter('subscriber_topic').value
-        self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
-        self.frame_id          = self.get_parameter('frame_id').value
-        
-        # -------------------------------------------
         # Initialize additional attributes needed for processing.
         # These attributes hold pose and orientation data and must be initialized.
         # -------------------------------------------
@@ -123,6 +114,16 @@ class GeneralTaskNode(Node):
         self.pose_y = 0.0
         self.pose_z = 0.0
 
+        # -------------------------------------------
+        # Retrieve final parameter values from the parameter server.
+        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
+        # -------------------------------------------
+        self.publisher_topic  = self.get_parameter('publisher_topic').value
+        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
+        self.subscriber_topic  = self.get_parameter('subscriber_topic').value
+        self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
+        self.frame_id          = self.get_parameter('frame_id').value
+        
         # -------------------------------------------
         # Create Publishers.
         # -------------------------------------------
