@@ -101,8 +101,14 @@ class CameraNode(Node):
         # -------------------------------------------
         self.create_timer(0.1, self.image_callback)
 
-        self.get_logger().info("CameraNode started.")
-
+        self.get_logger().info(
+            f"CameraNode started with publishers on '{self.color_image_publisher}', '{self.depth_image_publisher}' and '{self.camera_info_publisher}."
+            f"frame_id '{self.frame_id}'."
+        )
+    
+    # -------------------------------------------
+    # Image Processing Callback 
+    # -------------------------------------------
     def image_callback(self):
         # Wait for frames from RealSense camera
         frames = self.pipeline.wait_for_frames()
@@ -135,6 +141,9 @@ class CameraNode(Node):
         # Process and publish camera info
         self.camera_parameters_callback(color_frame)
 
+    # -------------------------------------------
+    # Cameras Parameters Callback 
+    # -------------------------------------------
     def camera_parameters_callback(self, color_frame):
         camera_info = CameraInfo()
         # Retrieve parameters from the RealSense stream profile

@@ -98,7 +98,7 @@ class PointCloudNode(Node):
         # -------------------------------------------
         # Create a Publisher.
         # -------------------------------------------
-        self.publisher_ = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
+        self.point_cloud_publisher = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
         
         # -------------------------------------------
         # Create Subscribers.
@@ -125,7 +125,8 @@ class PointCloudNode(Node):
         )
 
         self.get_logger().info(
-            "PointCloudNode started."
+            f"PointCloudNode started with publisher on '{self.point_cloud_topic}'."
+            f"frame_id '{self.frame_id}'."
         )
         
     # -------------------------------------------
@@ -212,7 +213,7 @@ class PointCloudNode(Node):
             header.frame_id = self.frame_id
             processed_msg = pc2.create_cloud_xyz32(header, points_transformed)
 
-            self.publisher_.publish(processed_msg)
+            self.point_cloud_publisher.publish(processed_msg)
             
             self.get_logger().info(
                 f"Published processed message with frame_id: '{processed_msg.header.frame_id}', "
