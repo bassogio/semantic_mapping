@@ -24,6 +24,17 @@ source /opt/ros/humble/setup.bash
 # Change to the data directory
 cd /workspace/data
 
+# Start any additional Python nodes if needed (currently commented out)
+# python3 src/camera/camera_processor.py &
+# PIDS+=($!)
+python3 src/point_cloud/point_cloud_processor.py &
+PIDS+=($!)
+python3 src/segmentation/segmentation_processor.py &
+PIDS+=($!)
+
+# Wait for all background processes to finish
+wait
+
 # Start RGB bag playback in the background
 ros2 bag play ros2_bag_data_dir --clock &
 # Record the process ID
@@ -39,14 +50,6 @@ PIDS+=($!)
 
 # Optionally, return to the project root if necessary
 cd ..
-
-# Start any additional Python nodes if needed (currently commented out)
-# python3 src/camera/camera_processor.py &
-# PIDS+=($!)
-python3 src/point_cloud/point_cloud_processor.py &
-PIDS+=($!)
-python3 src/segmentation/segmentation_processor.py &
-PIDS+=($!)
 
 # Wait for all background processes to finish
 wait

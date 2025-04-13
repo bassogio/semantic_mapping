@@ -215,10 +215,10 @@ class PointCloudNode(Node):
 
             self.point_cloud_publisher.publish(processed_msg)
             
-            self.get_logger().info(
-                f"Published processed message with frame_id: '{processed_msg.header.frame_id}', "
-                f"timestamp: {processed_msg.header.stamp}"
-            )
+            # self.get_logger().info(
+            #     f"Published processed message with frame_id: '{processed_msg.header.frame_id}', "
+            #     f"timestamp: {processed_msg.header.stamp}"
+            # )
 
             # Log debug information
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")

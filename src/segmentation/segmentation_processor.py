@@ -9,28 +9,6 @@ This node:
   - Processes each incoming image using a CLIPSeg-based segmentation model.
   - Publishes the segmented image on a dedicated topic.
   - (Optionally) subscribes to camera info.
-
-Ensure your configuration file (../../config/segmentation_config.yaml)
-contains the required keys. For example:
-
-segmentation_processing:
-  frame_id: "map"
-  segmentation_topic: "/camera/segmentation"
-  color_image_topic: "/camera/color/image_raw"
-  camera_parameters_topic: "/camera/CameraInfo"
-  labels:
-    - name: "ball"
-      id: 0
-      color: [128, 64, 128]
-    - name: "bottle"
-      id: 8
-      color: [107, 142, 35]
-    - name: "person"
-      id: 11
-      color: [220, 20, 60]
-    - name: "void"
-      id: 29
-      color: [255, 255, 255]
 """
 
 import os
@@ -39,6 +17,7 @@ from cv_bridge import CvBridge
 import cv2 as cv
 import numpy as np
 import torch
+import torch.nn.functional as F
 from transformers import CLIPSegProcessor as ClipProcessor, CLIPSegForImageSegmentation
 import rclpy
 from rclpy.node import Node
@@ -67,9 +46,11 @@ class CLIPsegProcessorWrapper:
     def __init__(self, prompts, device):
         self.prompts = prompts
         self.device = device
+        # Removed unused keyword arguments ('padding', 'truncation')
         self.processor = ClipProcessor.from_pretrained("CIDAS/clipseg-rd64-refined", use_fast=True)
         self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined").to(self.device)
-
+        self.model.eval()  # Ensure the model is in evaluation mode.
+    
     def process_image(self, cv_image, label_colors):
         """
         Process the input image to generate a segmentation overlay.
@@ -81,27 +62,47 @@ class CLIPsegProcessorWrapper:
         Returns:
             numpy.ndarray: Combined segmented image.
         """
-        
+        original_height, original_width = cv_image.shape[:2]
+
+        # Prepare inputs for all prompts without the removed kwargs.
         inputs = self.processor(
             text=self.prompts,
             images=[cv_image] * len(self.prompts),
-            return_tensors="pt",
-            padding=True,
-            truncation=True
+            return_tensors="pt"
         )
-
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Optionally convert to half precision for faster inference.
+        if self.device.type == 'cuda':
+            self.model.half()
+            inputs = {k: (v.half() if v.dtype == torch.float32 else v) for k, v in inputs.items()}
+
         with torch.no_grad():
             outputs = self.model(**inputs)
-        preds = torch.sigmoid(outputs.logits).cpu()
-        original_height, original_width = cv_image.shape[:2]
+
+        preds = torch.sigmoid(outputs.logits)
+
+        # Ensure the tensor has the shape (N, C, H, W).
+        if preds.ndim == 3:  # Likely shape (N, H, W)
+            preds = preds.unsqueeze(1)  # Now shape becomes (N, 1, H, W)
+
+        # Use GPU-accelerated interpolation to resize predictions.
+        preds = F.interpolate(preds, size=(original_height, original_width),
+                              mode='bilinear', align_corners=False)
+
+        # Remove the channel dimension if it's 1.
+        if preds.shape[1] == 1:
+            preds = preds.squeeze(1)
+
+        preds = preds.cpu().numpy()  # Now shape: (N, original_height, original_width)
+
         combined_image = np.zeros((original_height, original_width, 3), dtype=np.uint8)
-        for idx, confidence_map in enumerate(preds):
-            confidence = confidence_map.numpy().squeeze()
-            resized_confidence = cv.resize(confidence, (original_width, original_height), interpolation=cv.INTER_LINEAR)
-            color = label_colors.get(idx, (255, 255, 255))
-            for c in range(3):
-                combined_image[:, :, c] += (resized_confidence * color[c]).astype(np.uint8)
+        # Combine each prediction with its associated label color.
+        for idx, confidence in enumerate(preds):
+            color = np.array(label_colors.get(idx, (255, 255, 255)))
+            colored_mask = (confidence[:, :, None] * color).astype(np.uint8)
+            combined_image = cv.add(combined_image, colored_mask)
+
         return combined_image
 
 class SegmentationNode(Node):
@@ -115,36 +116,32 @@ class SegmentationNode(Node):
             self.device = torch.device("cpu")
             print("Using CPU for computation.")
 
-        # Access the configuration section.
+        # Access configuration parameters.
         self.node_config = config['segmentation_processing']
         self.frame_id = self.node_config.get('frame_id', 'map')
         self.segmentation_topic = self.node_config['segmentation_topic']
         self.color_image_topic = self.node_config['color_image_topic']
         self.camera_parameters_topic = self.node_config['camera_parameters_topic']
-        # Load labels from configuration (do not declare them as a ROS parameter)
         self.labels = self.node_config['labels']
 
-        # Declare ROS2 parameters for runtime modification of simple types.
+        # Declare ROS2 parameters for potential runtime modifications.
         self.declare_parameter('frame_id', self.frame_id)
         self.declare_parameter('segmentation_topic', self.segmentation_topic)
         self.declare_parameter('color_image_topic', self.color_image_topic)
         self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
-        # Retrieve potential runtime overrides.
         self.frame_id = self.get_parameter('frame_id').value
         self.segmentation_topic = self.get_parameter('segmentation_topic').value
         self.color_image_topic = self.get_parameter('color_image_topic').value
         self.camera_parameters_topic = self.get_parameter('camera_parameters_topic').value
 
-        # Initialize the bridge.
+        # Initialize CV bridge.
         self.bridge = CvBridge()
-        # Build list of prompts and mapping of label colors.
         self.prompts = [label['name'] for label in self.labels]
-        self.label_colors = { idx: tuple(label['color']) for idx, label in enumerate(self.labels) }
-        # Initialize the segmentation processor.
+        self.label_colors = {idx: tuple(label['color']) for idx, label in enumerate(self.labels)}
         self.processor = CLIPsegProcessorWrapper(self.prompts, self.device)
-        # Create a publisher for the segmented image.
+
+        # Set up publisher and subscribers.
         self.segmentation_pub = self.create_publisher(Image, self.segmentation_topic, 10)
-        # Create subscribers.
         self.image_sub = self.create_subscription(
             Image,
             self.color_image_topic,
