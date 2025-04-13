@@ -12,12 +12,10 @@ import os
 import yaml     
 import pyrealsense2 as rs
 import numpy as np
-import cv2
 from cv_bridge import CvBridge
 import rclpy    
 from rclpy.node import Node  
 from sensor_msgs.msg import CameraInfo, Image
-from std_msgs.msg import String
 
 # -----------------------------------
 # Configuration Loader Function
@@ -102,8 +100,7 @@ class CameraNode(Node):
         self.create_timer(0.1, self.image_callback)
 
         self.get_logger().info(
-            f"CameraNode started with publishers on '{self.color_image_publisher}', '{self.depth_image_publisher}' and '{self.camera_info_publisher}."
-            f"frame_id '{self.frame_id}'."
+            f"CameraNode started with publishers on '{self.color_image_topic}', '{self.depth_image_topic}' and '{self.CameraInfo_topic}."
         )
     
     # -------------------------------------------
