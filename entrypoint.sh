@@ -41,10 +41,12 @@ PIDS+=($!)
 cd ..
 
 # Start any additional Python nodes if needed (currently commented out)
-# python3 src/camera/main.py &
+# python3 src/camera/camera_processor.py &
 # PIDS+=($!)
-# python3 src/point_cloud/main.py &
-# PIDS+=($!)
+python3 src/point_cloud/point_cloud_processor.py &
+PIDS+=($!)
+python3 src/segmentation/segmentation_processor.py &
+PIDS+=($!)
 
 # Wait for all background processes to finish
 wait

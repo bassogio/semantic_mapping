@@ -81,7 +81,15 @@ class CLIPsegProcessorWrapper:
         Returns:
             numpy.ndarray: Combined segmented image.
         """
-        inputs = self.processor(text=self.prompts, images=[cv_image] * len(self.prompts), return_tensors="pt")
+        
+        inputs = self.processor(
+            text=self.prompts,
+            images=[cv_image] * len(self.prompts),
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        )
+
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.no_grad():
             outputs = self.model(**inputs)

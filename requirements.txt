@@ -6,5 +6,6 @@ netifaces
 pyyaml
 packaging
 pyrealsense2
+transforms3d
 transformers
 # torch and torchvision are installed separately with Jetson-compatible builds
