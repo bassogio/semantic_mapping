@@ -1,42 +1,50 @@
 #!/bin/bash
 
-# Stop all background processes on exit (including Ctrl+C)
+# Array to hold process IDs
+PIDS=()
+
+# Cleanup function to kill all background processes
 cleanup() {
   echo "Cleaning up..."
-  kill ${PIDS[@]} 2>/dev/null
-  wait
+  for pid in "${PIDS[@]}"; do
+    echo "Killing process with PID: $pid"
+    kill "$pid" 2>/dev/null
+  done
+  # Optionally, if child processes spawn subprocesses, you can kill the entire process group:
+  # kill -- -$$
+  exit 0
 }
-trap cleanup
 
-# Source ROS 2 environment
+# Trap SIGINT (Ctrl+C) and SIGTERM to trigger cleanup
+trap cleanup SIGINT SIGTERM
+
+# Source the ROS 2 environment
 source /opt/ros/humble/setup.bash
 
-# Go to data directory
+# Change to the data directory
 cd /workspace/data
 
-# Start RGB bag playback
-# ros2 bag play ros2_bag_data_dir --loop --clock &
+# Start RGB bag playback in the background
 ros2 bag play ros2_bag_data_dir --clock &
-
+# Record the process ID
 PIDS+=($!)
 
-# Wait to align playback
-# sleep 10.2
+# Wait a bit to align playback timing
 sleep 5.1
 
-# Start Depth bag playback
-# ros2 bag play ros2_bag_gt_dir --loop --clock &
+# Start Depth bag playback in the background
 ros2 bag play ros2_bag_gt_dir --clock &
+# Record the process ID
 PIDS+=($!)
 
-# Go back to project root
+# Optionally, return to the project root if necessary
 cd ..
 
-# Start Python nodes
+# Start any additional Python nodes if needed (currently commented out)
 # python3 src/camera/main.py &
 # PIDS+=($!)
 # python3 src/point_cloud/main.py &
 # PIDS+=($!)
 
-# Wait for all background jobs
+# Wait for all background processes to finish
 wait
