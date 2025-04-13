@@ -20,26 +20,26 @@ trap cleanup SIGINT SIGTERM
 source /opt/ros/humble/setup.bash
 
 # Start additional Python nodes (they continue running)
-# python3 src/point_cloud/point_cloud_processor.py &
-# PIDS+=($!)
-
-# python3 src/segmentation/segmentation_processor.py &
-# PIDS+=($!)
+python3 src/segmentation/segmentation_processor.py &
+PIDS+=($!)
 
 # --- Wait for the segmentation node to be ready ---
 # Instead of waiting for the process to exit (which never happens normally),
 # we poll for its readiness by checking if the segmentation topic is available.
-# echo "Waiting for the segmentation node to publish /camera/segmentation..."
-# timeout=60  # seconds to wait before timing out
-# while ! ros2 topic list | grep -q "/camera/segmentation"; do
-#   sleep 1
-#   ((timeout--))
-#   if [ $timeout -le 0 ]; then
-#     echo "Timeout waiting for segmentation topic /camera/segmentation. Exiting."
-#     cleanup
-#   fi
-# done
-# echo "Segmentation node is ready. Proceeding with bag playback."
+echo "Waiting for the segmentation node to publish /camera/segmentation..."
+timeout=60  # seconds to wait before timing out
+while ! ros2 topic list | grep -q "/camera/segmentation"; do
+  sleep 1
+  ((timeout--))
+  if [ $timeout -le 0 ]; then
+    echo "Timeout waiting for segmentation topic /camera/segmentation. Exiting."
+    cleanup
+  fi
+done
+echo "Segmentation node is ready. Proceeding with bag playback."
+
+python3 src/point_cloud/point_cloud_processor.py &
+PIDS+=($!)
 
 # Change to the data directory
 cd /workspace/data
