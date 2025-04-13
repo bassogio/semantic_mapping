@@ -1,3 +1,10 @@
+"""
+Generic ROS2 Node Template for a Camera Node
+
+This node loads configuration parameters, sets up a RealSense camera pipeline,
+and publishes color and depth image messages (as well as camera info) continuously.
+"""
+
 # -----------------------------------
 # Import Statements
 # -----------------------------------
@@ -49,8 +56,8 @@ class CameraNode(Node):
         # Load configuration parameters.
         # -------------------------------------------
         self.color_image_topic  = self.node_config['color_image_topic']
-        self.depth_image_topic = self.node_config['depth_image_topic']
-        self.CameraInfo_topic  = self.node_config['CameraInfo_topic']
+        self.depth_image_topic  = self.node_config['depth_image_topic']
+        self.CameraInfo_topic   = self.node_config['CameraInfo_topic']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
@@ -58,164 +65,98 @@ class CameraNode(Node):
         self.declare_parameter('color_image_topic', self.color_image_topic)
         self.declare_parameter('depth_image_topic', self.depth_image_topic)
         self.declare_parameter('CameraInfo_topic', self.CameraInfo_topic)
-
-        # -------------------------------------------
-        # Initialize additional attributes needed for processing.
-        # These attributes hold pose and orientation data and must be initialized.
-        # -------------------------------------------
-        self.Qw = 1.0  # Default for an identity quaternion.
-        self.Qx = 0.0
-        self.Qy = 0.0
-        self.Qz = 0.0
-        self.pose_x = 0.0
-        self.pose_y = 0.0
-        self.pose_z = 0.0
-
+        
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
-        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
         # -------------------------------------------
-        self.publisher_topic  = self.get_parameter('publisher_topic').value
-        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
-        self.subscriber_topic  = self.get_parameter('subscriber_topic').value
-        self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
-        self.frame_id          = self.get_parameter('frame_id').value
+        self.color_image_topic  = self.get_parameter('color_image_topic').value
+        self.depth_image_topic  = self.get_parameter('depth_image_topic').value
+        self.CameraInfo_topic   = self.get_parameter('CameraInfo_topic').value
         
+        # -------------------------------------------
+        # Setup RealSense pipeline
+        # -------------------------------------------
+        self.pipeline = rs.pipeline()
+        self.config = rs.config()
+        self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+        self.config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
+        self.pipeline.start(self.config)
+
+        # -------------------------------------------
+        # Initialize CvBridge once for the node.
+        # -------------------------------------------
+        self.bridge = CvBridge()
+
         # -------------------------------------------
         # Create Publishers.
+        # Use the topics specified in the configuration.
         # -------------------------------------------
-        # Publisher 1 sends PoseStamped messages on the first publisher topic.
-        self.publisher_ = self.create_publisher(PoseStamped, self.publisher_topic, 10)
-        # Publisher 2 sends PoseStamped messages on the second publisher topic.
-        self.publisher2_ = self.create_publisher(PoseStamped, self.publisher_topic2, 10)
-        
+        self.color_image_publisher = self.create_publisher(Image, self.color_image_topic, 10)
+        self.depth_image_publisher = self.create_publisher(Image, self.depth_image_topic, 10)
+        self.camera_info_publisher  = self.create_publisher(CameraInfo, self.CameraInfo_topic, 10)
+
         # -------------------------------------------
-        # Create Subscribers.
+        # Create a Timer to process and publish camera data at a fixed interval (e.g., 10 Hz).
+        # You can adjust the rate as needed.
         # -------------------------------------------
-        # Subscriber 1 listens for PoseStamped messages on the first subscriber topic.
-        self.subscription = self.create_subscription(
-            PoseStamped,                # Message type.
-            self.subscriber_topic,      # Topic name.
-            self.listener_callback,     # Callback function.
-            10                          # Queue size.
-        )
-        # Subscriber 2 listens for PoseStamped messages on the second subscriber topic.
-        self.subscription2 = self.create_subscription(
-            PoseStamped,                # Message type.
-            self.subscriber_topic2,     # Topic name.
-            self.listener_callback2,    # Callback function.
-            10                          # Queue size.
-        )
-        
-        self.get_logger().info(
-            f"GeneralTaskNode started with publishers on '{self.publisher_topic}' and '{self.publisher_topic2}', "
-            f"subscribers on '{self.subscriber_topic}' and '{self.subscriber_topic2}', "
-            f"and frame_id '{self.frame_id}'."
-        )
-        
-        # -------------------------------------------
-        # OPTIONAL: Create a Service Server.
-        # Enable this block if you want your node to provide service functionality.
-        # To disable, either set 'use_service' to false in the configuration file or comment out this block.
-        # -------------------------------------------
-        if self.use_service:
-            self.service_server = self.create_service(Trigger, self.service_name, self.service_callback)
-            self.get_logger().info(f"Service server started on '{self.service_name}'")
-    
-    # -------------------------------------------
-    # Subscriber Callback Function for Topic 1
-    # -------------------------------------------
-    def listener_callback(self, msg: PoseStamped):
-        """
-        Callback invoked when a PoseStamped message is received on the first subscriber topic.
+        self.create_timer(0.1, self.image_callback)
 
-        The function:
-          - Logs the header information of the incoming message.
-          - Creates a new message.
-          - Sets the header's timestamp to the current time and frame_id to the configured value.
-          - Copies (or processes) the pose data.
-          - Publishes the processed message using Publisher 1.
+        self.get_logger().info("CameraNode started.")
 
-        Parameters:
-            msg (PoseStamped): The received message.
-        """
-        self.get_logger().info(
-            f"(Subscriber 1) Received message with frame_id: '{msg.header.frame_id}', timestamp: {msg.header.stamp}"
-        )
-        
-        processed_msg = PoseStamped()
-        processed_msg.header.stamp = self.get_clock().now().to_msg()  # Update timestamp.
-        processed_msg.header.frame_id = self.frame_id               # Update frame_id.
-        processed_msg.pose = msg.pose                                # Copy or modify pose as needed.
-        
-        self.publisher_.publish(processed_msg)
-        
-        self.get_logger().info(
-            f"(Publisher 1) Published processed message with frame_id: '{processed_msg.header.frame_id}', "
-            f"timestamp: {processed_msg.header.stamp}"
-        )
-    
-    # -------------------------------------------
-    # Subscriber Callback Function for Topic 2
-    # -------------------------------------------
-    def listener_callback2(self, msg: PoseStamped):
-        """
-        Callback invoked when a PoseStamped message is received on the second subscriber topic.
+    def image_callback(self):
+        # Wait for frames from RealSense camera
+        frames = self.pipeline.wait_for_frames()
 
-        Similar to listener_callback, but publishes the processed message using Publisher 2.
+        # Get color and depth frames
+        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
 
-        Parameters:
-            msg (PoseStamped): The received message.
-        """
-        self.get_logger().info(
-            f"(Subscriber 2) Received message with frame_id: '{msg.header.frame_id}', timestamp: {msg.header.stamp}"
-        )
+        if not color_frame or not depth_frame:
+            self.get_logger().warn("No frames received")
+            return
+
+        # Convert RealSense frames to OpenCV format
+        color_image = np.asanyarray(color_frame.get_data())
+        depth_image = np.asanyarray(depth_frame.get_data())
+
+        # Convert to ROS Image messages
+        color_image_msg = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
+        depth_image_msg = self.bridge.cv2_to_imgmsg(depth_image, encoding="16UC1")
+
+        # Add header to images with timestamp
+        now = self.get_clock().now().to_msg()
+        color_image_msg.header.stamp = now
+        depth_image_msg.header.stamp = now
+
+        # Publish the messages
+        self.color_image_publisher.publish(color_image_msg)
+        self.depth_image_publisher.publish(depth_image_msg)
         
-        processed_msg = PoseStamped()
-        processed_msg.header.stamp = self.get_clock().now().to_msg()  # Update timestamp.
-        processed_msg.header.frame_id = self.frame_id               # Update frame_id.
-        processed_msg.pose = msg.pose                                # Copy or process pose as needed.
+        # Process and publish camera info
+        self.camera_parameters_callback(color_frame)
+
+    def camera_parameters_callback(self, color_frame):
+        camera_info = CameraInfo()
+        # Retrieve parameters from the RealSense stream profile
+        video_profile = color_frame.profile.as_video_stream_profile()
+        intrinsics = video_profile.intrinsics
+        camera_info.width = intrinsics.width
+        camera_info.height = intrinsics.height
+        camera_info.k[0] = intrinsics.fx
+        camera_info.k[4] = intrinsics.fy
+        camera_info.k[2] = intrinsics.ppx
+        camera_info.k[5] = intrinsics.ppy
+        camera_info.header.stamp = self.get_clock().now().to_msg()
         
-        self.publisher2_.publish(processed_msg)
-        
-        self.get_logger().info(
-            f"(Publisher 2) Published processed message with frame_id: '{processed_msg.header.frame_id}', "
-            f"timestamp: {processed_msg.header.stamp}"
-        )
-    
-    # -------------------------------------------
-    # OPTIONAL: Service Callback Function
-    # -------------------------------------------
-    def service_callback(self, request, response):
-        """
-        Callback function for the optional service server.
-
-        Uses the Trigger service from std_srvs. When the service is called, logs the call,
-        and returns a simple response.
-
-        Parameters:
-            request: The service request (unused for Trigger).
-            response: The service response to be sent.
-
-        Returns:
-            The updated service response with success set to True.
-        """
-        self.get_logger().info("Service call received.")
-        response.success = True
-        response.message = "Service call processed successfully."
-        return response
+        self.camera_info_publisher.publish(camera_info)
 
 # -----------------------------------
 # Main Entry Point
 # -----------------------------------
 def main(args=None):
-    """
-    The main function initializes the ROS2 system, loads configuration parameters,
-    creates an instance of the GeneralTaskNode, and spins to process messages until shutdown.
-    """
     rclpy.init(args=args)
     config = load_config()
-    node = GeneralTaskNode(config)
+    node = CameraNode(config)
     
     try:
         rclpy.spin(node)
@@ -225,8 +166,5 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-# -----------------------------------
-# Run the node when the script is executed directly.
-# -----------------------------------
 if __name__ == '__main__':
     main()
