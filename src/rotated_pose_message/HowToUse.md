@@ -1,7 +1,7 @@
 
   
 
-# How to Use: Rotate Pose Processor
+# How to Use Rotate Pose Processor
 
   
 
