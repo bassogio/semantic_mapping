@@ -1,84 +1,142 @@
-# point_cloud_processor
-import rclpy
-from rclpy.node import Node  
-from sensor_msgs.msg import CameraInfo, Image
-from geometry_msgs.msg import PoseStamped
+# -----------------------------------
+# Import Statements
+# -----------------------------------
+import os       
+import yaml     
 import numpy as np
-from point_cloud_publisher import PointCloudPublisher
-import std_msgs.msg
-import cv2
 from cv_bridge import CvBridge
 from transforms3d.quaternions import quat2mat
+import rclpy   
+from rclpy.node import Node  
+from sensor_msgs.msg import PointCloud2, CameraInfo, Image
+from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped
+import sensor_msgs_py.point_cloud2 as pc2
 
-class PointCloudProcessor(rclpy.node.Node):
+# -----------------------------------
+# Configuration Loader Function
+# -----------------------------------
+def load_config():
+    """
+    Load configuration parameters from the configuration file.
+
+    Returns:
+        dict: A dictionary containing configuration data.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, '../../config/point_cloud_config.yaml')
+    
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    else:
+        return {}
+
+# -----------------------------------
+# ROS2 Node Definition
+# -----------------------------------
+class PointCloudNode(Node):
     def __init__(self, config):
-        super().__init__('point_cloud_processor')
-
-        self.fx = 0.0
-        self.fy = 0.0
-        self.cx = 0.0
-        self.cy = 0.0
+        # Initialize the node with a unique name.
+        super().__init__('point_cloud_node')
         
+        # -------------------------------------------
+        # Access the configuration section.
+        # -------------------------------------------
+        self.task_config = config['point_cloud_processing']
+        
+        # -------------------------------------------
+        # Load configuration parameters.
+        # -------------------------------------------
+        self.point_cloud_topic = self.task_config['point_cloud_topic']
+        self.camera_parameters_topic = self.task_config['camera_parameters_topic']
+        self.depth_image_topic = self.task_config['depth_image_topic']
+        self.pose_topic = self.task_config['pose_topic']
+        self.max_distance = self.task_config['max_distance']
+        self.depth_scale = self.task_config['depth_scale']
+        self.frame_id = self.task_config['frame_id']
+        
+        # -------------------------------------------
+        # Declare ROS2 parameters for runtime modification.
+        # This allows you to change the parameters without restarting the node.
+        # -------------------------------------------
+        self.declare_parameter('point_cloud_topic', self.point_cloud_topic)
+        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
+        self.declare_parameter('depth_image_topic', self.depth_image_topic)
+        self.declare_parameter('pose_topic', self.pose_topic)
+        self.declare_parameter('max_distance', self.max_distance)
+        self.declare_parameter('depth_scale', self.depth_scale)
+        self.declare_parameter('frame_id', self.frame_id)
+        
+        # Retrieve the (possibly updated) parameter values.
+        self.point_cloud_topic = self.get_parameter('point_cloud_topic').value
+        self.camera_parameters_topic = self.get_parameter('camera_parameters_topic').value
+        self.depth_image_topic = self.get_parameter('depth_image_topic').value
+        self.pose_topic = self.get_parameter('pose_topic').value
+        self.max_distance = self.get_parameter('max_distance').value
+        self.depth_scale = self.get_parameter('depth_scale').value
+        self.frame_id = self.get_parameter('frame_id').value     
+
+        # -------------------------------------------
+        # Initialize additional attributes needed for processing.
+        # These will be updated when pose messages are received.
+        # -------------------------------------------
+        self.Qw = 1.0  # Default orientation (identity quaternion)
         self.Qx = 0.0
         self.Qy = 0.0
         self.Qz = 0.0
-        self.Qw = 0.0
-
         self.pose_x = 0.0
         self.pose_y = 0.0
         self.pose_z = 0.0
 
-        # Access the config 
-        self.point_cloud_processing = config['point_cloud_processing']
-
-        # Load configuration parameters
-        self.depth_image_topic = self.point_cloud_processing['depth_image_topic']
-        self.camera_parameters_topic = self.point_cloud_processing['camera_parameters_topic']
-        self.point_cloud_topic = self.point_cloud_processing['point_cloud_topic']
-        self.max_distance = self.point_cloud_processing['max_distance']
-        self.depth_scale = self.point_cloud_processing['depth_scale']
-        self.pose_topic = self.point_cloud_processing['pose_topic']
-
-        # Load the rotation matrix from the config
-        # rotation_matrix_config = self.point_cloud_processing['rotation_matrix']
-        # self.rotation_matrix = np.array(rotation_matrix_config)
-
-        # Declare parameters for ROS 2
-        self.declare_parameter('pose_topic', self.pose_topic)
-        self.declare_parameter('depth_image_topic', self.depth_image_topic)
-        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
-        self.declare_parameter('point_cloud_topic', self.point_cloud_topic)
-
-        # Initialize the PointCloudPublisher
-        self.publisher = PointCloudPublisher(self, self.point_cloud_topic)
-
-        # Initialize CvBridge
-        self.bridge = CvBridge()
-
-        # Create subscriptions
-        self.create_subscription(
-            CameraInfo, 
-            self.camera_parameters_topic, 
-            self.camera_info_callback, 10)
+        # -------------------------------------------
+        # Create a Publisher.
+        # -------------------------------------------
+        self.publisher_ = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
         
-        self.create_subscription(
-            PoseStamped, 
-            self.pose_topic, 
-            self.pose_callback, 10)
+        # -------------------------------------------
+        # Create Subscribers.
+        # -------------------------------------------
+        self.camera_subscription = self.create_subscription(
+            CameraInfo,                        # Message type.
+            self.camera_parameters_topic,      # Topic name.
+            self.camera_callback,              # Callback function.
+            10                                 # Queue size.
+        )
 
-        self.create_subscription(
-            Image,  
-            self.depth_image_topic,
-            self.point_cloud_callback, 10)
+        self.pose_subscription = self.create_subscription(
+            PoseStamped,                       # Message type.
+            self.pose_topic,             # Topic name.
+            self.pose_callback,                # Callback function.
+            10                                 # Queue size.
+        )
 
-    def camera_info_callback(self, msg):
+        self.depth_image_subscription = self.create_subscription(
+            Image,                             # Message type.
+            self.depth_image_topic,             # Topic name.
+            self.point_cloud_callback,         # Callback function.
+            10                                 # Queue size.
+        )
+
+        self.get_logger().info(
+            "PointCloudNode started."
+        )
+        
+    # -------------------------------------------
+    # Camera Callback Function
+    # -------------------------------------------
+    def camera_callback(self, msg):
         # Extract camera parameters
         self.fx = msg.k[0]
         self.fy = msg.k[4]
         self.cx = msg.k[2]
         self.cy = msg.k[5]
 
-    def pose_callback(self,msg):
+    # -------------------------------------------
+    # Pose Callback Function
+    # -------------------------------------------
+    def pose_callback(self, msg):
         # Update quaternion components from the pose message
         self.Qx = msg.pose.orientation.x
         self.Qy = msg.pose.orientation.y
@@ -89,9 +147,15 @@ class PointCloudProcessor(rclpy.node.Node):
         self.pose_y = msg.pose.position.y
         self.pose_z = msg.pose.position.z
 
-
+    # -------------------------------------------
+    # Point Cloud Callback Function
+    # -------------------------------------------
     def point_cloud_callback(self, msg):
         """Callback to process the depth image and generate a point cloud."""
+        
+        # Initialize CvBridge
+        self.bridge = CvBridge()
+
         # Ensure camera parameters are initialized
         if not self.fx or not self.fy or not self.cx or not self.cy:
             self.get_logger().warn("Camera parameters not initialized. Skipping point cloud processing.")
@@ -141,10 +205,46 @@ class PointCloudProcessor(rclpy.node.Node):
             translation = np.array([self.pose_x, self.pose_y, self.pose_z])
             points_transformed = points_rotated + translation 
 
-            # Publish the rotated point cloud
-            self.publisher.publish_point_cloud(points_transformed, self.point_cloud_processing)
+            # Create PointCloud2 message
+            header = Header()
+            header.stamp = self.get_clock().now().to_msg()
+            header.frame_id = self.frame_id
+            processed_msg = pc2.create_cloud_xyz32(header, points_transformed)
+
+            self.publisher_.publish(processed_msg)
+            
+            self.get_logger().info(
+                f"Published processed message with frame_id: '{processed_msg.header.frame_id}', "
+                f"timestamp: {processed_msg.header.stamp}"
+            )
 
             # Log debug information
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")
         except Exception as e:
             self.get_logger().error(f"Error: {e}")
+
+# -----------------------------------
+# Main Entry Point
+# -----------------------------------
+def main(args=None):
+    """
+    The main function initializes the ROS2 system, loads configuration parameters,
+    creates an instance of the GeneralTaskNode, and spins to process messages until shutdown.
+    """
+    rclpy.init(args=args)
+    config = load_config()
+    node = PointCloudNode(config)
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass  # Allow graceful shutdown on CTRL+C.
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+# -----------------------------------
+# Run the node when the script is executed directly.
+# -----------------------------------
+if __name__ == '__main__':
+    main()
