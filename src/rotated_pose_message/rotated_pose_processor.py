@@ -10,6 +10,7 @@ import rclpy
 from rclpy.node import Node  
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
+from std_srvs.srv import Trigger
 
 # -----------------------------------
 # Configuration Loader Function
@@ -54,6 +55,9 @@ class RotatedPoseNode(Node):
         self.pitch  = self.node_config['pitch']
         self.yaw  = self.node_config['yaw']
         self.frame_id  = self.node_config['frame_id']
+        self.use_service  = self.node_config['use_service']
+        self.service_name  = self.node_config['service_name']
+    
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
@@ -64,7 +68,9 @@ class RotatedPoseNode(Node):
         self.declare_parameter('pitch', self.pitch)
         self.declare_parameter('yaw', self.yaw)
         self.declare_parameter('frame_id', self.frame_id)
-        
+        self.declare_parameter('use_service', self.use_service)
+        self.declare_parameter('service_name', self.service_name)
+
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # This allows any runtime overrides (e.g., via launch files) to update these defaults.
@@ -76,6 +82,8 @@ class RotatedPoseNode(Node):
         self.pitch  = self.get_parameter('pitch').value
         self.yaw  = self.get_parameter('yaw').value
         self.frame_id  = self.get_parameter('frame_id').value
+        self.use_service  = self.get_parameter('use_service').value
+        self.service_name  = self.get_parameter('service_name').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -111,7 +119,14 @@ class RotatedPoseNode(Node):
             f"frame_id '{self.frame_id}'."
             f"Rotation angles set to roll={self.roll}°, pitch={self.pitch}°, yaw={self.yaw}°"
         )
-        
+
+        # -------------------------------------------
+        # Create a Service Server.
+        # -------------------------------------------
+        if self.use_service:
+            self.service_server = self.create_service(Trigger, self.service_name, self.service_callback)
+            self.get_logger().info(f"Service server started on '{self.service_name}'")
+    
     # -------------------------------------------
     # Pose Rotation Callback
     # -------------------------------------------
@@ -183,6 +198,33 @@ class RotatedPoseNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error processing pose: {e}")
 
+    # -------------------------------------------
+    # Service Callback Function
+    # -------------------------------------------
+    def service_callback(self, request, response):
+        """
+        Clear markers from RViz and reset the path history.
+        This will remove the currently published markers and clear the internal path list,
+        so that the new path will start fresh.
+        """
+        self.get_logger().info("Clearing markers and resetting path history...")
+        
+        # Publish a DELETE marker to remove the current path marker.
+        delete_marker = Marker()
+        delete_marker.header.frame_id = self.frame_id
+        delete_marker.header.stamp = self.get_clock().now().to_msg()
+        delete_marker.ns = "rotate_pose_path"
+        delete_marker.id = 1
+        delete_marker.action = Marker.DELETE
+        self.marker_publisher.publish(delete_marker)
+        
+        # Reset the internal path history.
+        self.path_points = []
+
+        response = Trigger.Response()
+        response.success = True
+        response.message = "Markers cleared and path history reset."
+        return response
 
 # -----------------------------------
 # Main Entry Point
