@@ -91,6 +91,11 @@ class PointCloudNode(Node):
         self.pose_z = 0.0
 
         # -------------------------------------------
+        # Initialize CvBridge once for the node.
+        # -------------------------------------------
+        self.bridge = CvBridge()
+
+        # -------------------------------------------
         # Create a Publisher.
         # -------------------------------------------
         self.publisher_ = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
@@ -152,10 +157,6 @@ class PointCloudNode(Node):
     # -------------------------------------------
     def point_cloud_callback(self, msg):
         """Callback to process the depth image and generate a point cloud."""
-        
-        # Initialize CvBridge
-        self.bridge = CvBridge()
-
         # Ensure camera parameters are initialized
         if not self.fx or not self.fy or not self.cx or not self.cy:
             self.get_logger().warn("Camera parameters not initialized. Skipping point cloud processing.")

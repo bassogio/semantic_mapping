@@ -43,38 +43,22 @@ class CameraNode(Node):
         # -------------------------------------------
         # Access the configuration section.
         # -------------------------------------------
-        self.node_config = config['node_config']
+        self.node_config = config['camera_processing']
         
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.publisher_topic  = self.node_config['publisher_topic']
-        self.publisher_topic2 = self.node_config['publisher_topic2']
-        self.subscriber_topic  = self.node_config['subscriber_topic']
-        self.subscriber_topic2 = self.node_config['subscriber_topic2']
-        self.frame_id          = self.node_config['frame_id']
-        self.use_service       = self.node_config.get('use_service', False)
-        self.service_name      = self.node_config.get('service_name', 'trigger_service')
-        
+        self.color_image_topic  = self.node_config['color_image_topic']
+        self.depth_image_topic = self.node_config['depth_image_topic']
+        self.CameraInfo_topic  = self.node_config['CameraInfo_topic']
+
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('publisher_topic', self.publisher_topic)
-        self.declare_parameter('publisher_topic2', self.publisher_topic2)
-        self.declare_parameter('subscriber_topic', self.subscriber_topic)
-        self.declare_parameter('subscriber_topic2', self.subscriber_topic2)
-        self.declare_parameter('frame_id', self.frame_id)
-        
-        # -------------------------------------------
-        # Retrieve final parameter values from the parameter server.
-        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
-        # -------------------------------------------
-        self.publisher_topic  = self.get_parameter('publisher_topic').value
-        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
-        self.subscriber_topic  = self.get_parameter('subscriber_topic').value
-        self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
-        self.frame_id          = self.get_parameter('frame_id').value
-        
+        self.declare_parameter('color_image_topic', self.color_image_topic)
+        self.declare_parameter('depth_image_topic', self.depth_image_topic)
+        self.declare_parameter('CameraInfo_topic', self.CameraInfo_topic)
+
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
         # These attributes hold pose and orientation data and must be initialized.
@@ -87,6 +71,16 @@ class CameraNode(Node):
         self.pose_y = 0.0
         self.pose_z = 0.0
 
+        # -------------------------------------------
+        # Retrieve final parameter values from the parameter server.
+        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
+        # -------------------------------------------
+        self.publisher_topic  = self.get_parameter('publisher_topic').value
+        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
+        self.subscriber_topic  = self.get_parameter('subscriber_topic').value
+        self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
+        self.frame_id          = self.get_parameter('frame_id').value
+        
         # -------------------------------------------
         # Create Publishers.
         # -------------------------------------------
