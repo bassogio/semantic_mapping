@@ -41,7 +41,7 @@ class ClipSegNode(Node):
         # Create a subscription to the raw image topic.
         self.subscription = self.create_subscription(
             Image,
-            "/davis/left/image_raw",
+            "/camera/color/image_raw",
             self.image_callback,
             10)
 

@@ -23,14 +23,15 @@ RUN pip3 install --no-cache-dir -r /workspace/requirements.txt
 WORKDIR /workspace
 
 # Copy necessary application files to the container
-COPY src/ /workspace/src/
-COPY config/ /workspace/config/
+# COPY src/ /workspace/src/
+# COPY config/ /workspace/config/
 COPY entrypoint.sh /workspace/
+
+RUN chmod +x /workspace/entrypoint.sh
 
 # Set up the ROS environment to be sourced on each new shell session
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 
-RUN chmod +x /workspace/entrypoint.sh
 
 CMD ["/bin/bash"]
 
