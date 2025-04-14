@@ -1,0 +1,11 @@
+update the README file
+occupancy_grid
+costmap
+https://automaticaddison.com/building-a-map-of-the-environment-using-slam-ros-2-jazzy/
+https://drive.google.com/file/d/1Uk5YLMyoyMGMkE8FtJCNrZp_brGh5z3M/view
+
+
+
+
+checkout:
+https://github.com/yubaoliu/semantic_slam_floatlazer
