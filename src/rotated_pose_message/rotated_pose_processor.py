@@ -107,7 +107,7 @@ class RotatedPoseNode(Node):
         # -------------------------------------------
         # Create Subscriber.
         # -------------------------------------------
-        self.subscription = self.create_subscription(
+        self.pose_subscription = self.create_subscription(
             PoseStamped,              # Message type.
             self.pose_topic,          # Topic name.
             self.rotate_pose_callback,# Callback function.

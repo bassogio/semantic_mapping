@@ -1,69 +1,187 @@
-#!/usr/bin/env python3
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
+# -----------------------------------
+# Import Statements
+# -----------------------------------
+import os
+import yaml
+import argparse
+import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import torch
 import numpy as np
 from PIL import Image as PILImage
-import cv2
-from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from transformers import (
+    SegformerForSemanticSegmentation,
+    SegformerFeatureExtractor,
+    CLIPSegForImageSegmentation,
+    CLIPSegProcessor,
+)
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
 
-# Define segmentation labels with their IDs and corresponding colors.
-labels = [
-    {'name': 'road', 'id': 0, 'color': (128, 64, 128)},
-    {'name': 'sidewalk', 'id': 1, 'color': (244, 35, 232)},
-    {'name': 'building', 'id': 2, 'color': (70, 70, 70)},
-    {'name': 'wall', 'id': 3, 'color': (102, 102, 156)},
-    {'name': 'fence', 'id': 4, 'color': (190, 153, 153)},
-    {'name': 'pole', 'id': 5, 'color': (153, 153, 153)},
-    {'name': 'traffic light', 'id': 6, 'color': (250, 170, 30)},
-    {'name': 'traffic sign', 'id': 7, 'color': (220, 220, 0)},
-    {'name': 'vegetation', 'id': 8, 'color': (107, 142, 35)},
-    {'name': 'terrain', 'id': 9, 'color': (152, 251, 152)},
-    {'name': 'sky', 'id': 10, 'color': (70, 130, 180)},
-    {'name': 'person', 'id': 11, 'color': (220, 20, 60)},
-    {'name': 'rider', 'id': 12, 'color': (255, 0, 0)},
-    {'name': 'car', 'id': 13, 'color': (0, 0, 142)},
-    {'name': 'truck', 'id': 14, 'color': (0, 0, 70)},
-    {'name': 'bus', 'id': 15, 'color': (0, 60, 100)},
-    {'name': 'train', 'id': 16, 'color': (0, 80, 100)},
-    {'name': 'motorcycle', 'id': 17, 'color': (0, 0, 230)},
-    {'name': 'bicycle', 'id': 18, 'color': (119, 11, 32)},
-    {'name': 'void', 'id': 29, 'color': (0, 0, 0)},
-]
+# -----------------------------------
+# Configuration Loader Function
+# -----------------------------------
+def load_config():
+    """
+    Load configuration parameters.
 
-class ClipSegNode(Node):
-    def __init__(self):
-        super().__init__('clipseg_node')
-        self.bridge = CvBridge()
+    Returns:
+        dict: A dictionary containing configuration data.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, '../../config/segmentation_config.yaml')
 
-        # Create a subscription to the raw image topic.
-        self.subscription = self.create_subscription(
-            Image,
-            "/camera/color/image_raw",
-            self.image_callback,
-            10)
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    else:
+        raise FileNotFoundError(f"Config file not found at: {config_file}")
 
-        # Publisher for the segmentation mask output.
-        self.publisher_ = self.create_publisher(Image, '/clipseg/segmented_image', 10)
+# -----------------------------------
+# ROS2 Node Definition
+# -----------------------------------
+class SegmentationNode(Node):
+    def __init__(self, config):
+        # Initialize the node with a unique name.
+        super().__init__('segmentation_node')
 
+        # -------------------------------------------
+        # Access the configuration section.
+        # -------------------------------------------
+        self.node_config = config['segmentation_processing']
+
+        # -------------------------------------------
+        # Load configuration parameters.
+        # -------------------------------------------
+        self.segmentation_topic       = self.node_config['segmentation_topic']
+        self.color_image_topic        = self.node_config['color_image_topic']
+        self.camera_parameters_topic  = self.node_config['camera_parameters_topic']
+        self.frame_id                 = self.node_config['frame_id']
+        self.labels                   = self.node_config['labels']
+
+        # -------------------------------------------
+        # Declare ROS2 parameters for runtime modification.
+        # -------------------------------------------
+        self.declare_parameter('segmentation_topic',      self.segmentation_topic)
+        self.declare_parameter('color_image_topic',       self.color_image_topic)
+        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
+        self.declare_parameter('frame_id',                self.frame_id)
+
+        # -------------------------------------------
+        # Retrieve final parameter values from the parameter server.
+        # -------------------------------------------
+        self.segmentation_topic       = self.get_parameter('segmentation_topic').value
+        self.color_image_topic        = self.get_parameter('color_image_topic').value
+        self.camera_parameters_topic  = self.get_parameter('camera_parameters_topic').value
+        self.frame_id                 = self.get_parameter('frame_id').value
+
+        # -------------------------------------------
+        # Initialize additional attributes needed for processing.
+        # -------------------------------------------
         # Determine the device: use GPU if available.
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.get_logger().info(f"Using device: {self.device}")
 
-        # Load the pre-trained CLIPSeg processor and model.
-        self.get_logger().info("Loading CLIPSeg model and processor...")
-        # Forcing the use of the slow tokenizer by setting use_fast=False prevents tensor shape mismatches.
+        # Let user choose which segmentation model to use.
+        self.model_input = ''
+
+        while True:
+            self.model_input = input("Please choose a model (clipseg/segformer): ").strip().lower()
+
+            if self.model_input == 'clipseg':
+                self.get_logger().info("You chose the CLIPSeg model.")
+                self.clipseg_initialization()
+                break
+            elif self.model_input == 'segformer':
+                self.get_logger().info("You chose the SegFormer model.")
+                self.segformer_initialization()
+                break
+            else:
+                self.get_logger().error("Invalid model choice. Please choose 'clipseg' or 'segformer'.")
+
+        # Prepare text prompts from the label names.
+        self.prompts = [label['name'] for label in self.labels]
+
+        # -------------------------------------------
+        # Initialize CvBridge once for the node.
+        # -------------------------------------------
+        self.bridge = CvBridge()
+
+        # -------------------------------------------
+        # Create Publishers.
+        # -------------------------------------------
+        self.segmentation_publisher = self.create_publisher(Image, self.segmentation_topic, 10)
+
+        # -------------------------------------------
+        # Create Subscribers.
+        # -------------------------------------------
+        self.subscription = self.create_subscription(
+            Image,                      # Message type.
+            self.color_image_topic,      # Topic name.
+            self.segmentation_callback,     # Callback function.
+            10                          # Queue size.
+        )
+
+        # -------------------------------------------
+        # Initialize flags to track if each subscriber has received a message.
+        # -------------------------------------------
+        self.received_color_image = False
+
+        # -------------------------------------------
+        # Create a Timer to check if all subscribed topics have received at least one message.
+        # This timer will stop checking once messages from both topics have been received.
+        # -------------------------------------------
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
+
+    # -------------------------------------------
+    # Function to initialize the ClipSeg model.
+    # -------------------------------------------
+    def clipseg_initialization(self):
         self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined", use_fast=False)
         self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
         self.model.to(self.device)
         self.get_logger().info("CLIPSeg model loaded successfully.")
 
-        # Prepare text prompts from the label names.
-        self.prompts = [label['name'] for label in labels]
+    # -------------------------------------------
+    # Function to initialize the SegFormer model.
+    # -------------------------------------------
+    def segformer_initialization(self):
+            model_name = "nvidia/segformer-b1-finetuned-cityscapes-1024-1024"
+            self.feature_extractor = SegformerFeatureExtractor.from_pretrained(model_name)
+            self.model = SegformerForSemanticSegmentation.from_pretrained(model_name)
+            self.model.to(self.device)
+            self.get_logger().info("SegFormer loaded successfully.")
 
-    def image_callback(self, msg):
+    # -------------------------------------------
+    # Timer Callback to Check if All Subscribed Topics Have Received at Least One Message
+    # -------------------------------------------
+    def check_initial_subscriptions(self):
+        waiting_topics = []
+        if not self.received_color_image:
+            waiting_topics.append(f"'{self.color_image_topic}'")
+            
+        if waiting_topics:
+            self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
+        else:
+            self.get_logger().info(
+                "All subscribed topics have received at least one message.\n"
+                f"Using '{self.model_input}' model for segmentation.\n"
+                f"SegmentationNode started with publishers on '{self.segmentation_topic}'.\n"
+                f"subscribers on '{self.color_image_topic}'.\n"
+                f"and frame_id '{self.frame_id}'."
+            )
+            self.subscription_check_timer.cancel()
+
+    
+    # -------------------------------------------
+    # Segmentation Callback Function 
+    # -------------------------------------------
+    def segmentation_callback(self, msg):
+        if not self.received_color_image:
+            self.received_color_image = True
+
         try:
             # Convert the ROS image message to an OpenCV image.
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
@@ -74,55 +192,78 @@ class ClipSegNode(Node):
         # Convert the OpenCV BGR image to a PIL RGB image.
         pil_image = PILImage.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
 
-        # Prepare inputs for the CLIPSeg model.
-        # Here we activate padding and truncation for the text to ensure consistent tensor shapes.
-        inputs = self.processor(
-            text=self.prompts,
-            images=[pil_image] * len(self.prompts),
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
+        # Process the image based on the chosen model.
+        if self.model_input == 'clipseg':
+            inputs = self.processor(
+                text=self.prompts,
+                images=[pil_image] * len(self.prompts),
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt"
+            )
+            for key, value in inputs.items():
+                if isinstance(value, torch.Tensor):
+                    inputs[key] = value.to(self.device)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            preds = outputs.logits
+            processed_preds = torch.sigmoid(preds)
+            combined_preds = processed_preds.squeeze(0).argmax(dim=0).cpu().numpy()
+            
+        elif self.model_input == 'segformer':
+            inputs = self.feature_extractor(images=pil_image, return_tensors="pt")
+            for key, value in inputs.items():
+                if isinstance(value, torch.Tensor):
+                    inputs[key] = value.to(self.device)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            preds = outputs.logits  # Shape: [batch, num_labels, height, width]
+            combined_preds = preds.argmax(dim=1)[0].cpu().numpy()
+        else:
+            self.get_logger().error("Invalid model selection.")
+            return
 
-        # Move all tensors in inputs to the designated device.
-        for key, value in inputs.items():
-            if isinstance(value, torch.Tensor):
-                inputs[key] = value.to(self.device)
-
-        # Run inference without gradient calculations.
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-
-        # Process the raw logits with a sigmoid activation.
-        preds = outputs.logits
-        processed_preds = torch.sigmoid(preds)
-
-        # Determine the predicted label per pixel.
-        combined_preds = processed_preds.squeeze(0).argmax(dim=0).cpu().numpy()
-
-        # Create an image array to store the colored segmentation mask.
+        # Create a colored segmentation mask for visualization.
         colored_mask = np.zeros((combined_preds.shape[0], combined_preds.shape[1], 3), dtype=np.uint8)
-        for label in labels:
+        for label in self.labels:
             colored_mask[combined_preds == label['id']] = label['color']
+
+        # Log some stats about the segmentation for debugging.
+        unique_labels = np.unique(combined_preds)
+        # self.get_logger().info(f"Segmentation unique labels: {unique_labels}")
 
         # Convert the segmentation mask into a ROS image message and publish.
         try:
             seg_msg = self.bridge.cv2_to_imgmsg(colored_mask, encoding="rgb8")
-            self.publisher_.publish(seg_msg)
+            # Directly publish the image produced by CvBridge.
+            self.segmentation_publisher.publish(seg_msg)
+            self.get_logger().info("Published segmentation mask.")
         except CvBridgeError as e:
             self.get_logger().error(f'CvBridge Error during publishing: {e}')
             return
 
+# -----------------------------------
+# Main Entry Point
+# -----------------------------------
 def main(args=None):
+    """
+    The main function initializes the ROS2 system, loads configuration parameters,
+    creates an instance of the GeneralTaskNode, and spins to process messages until shutdown.
+    """
     rclpy.init(args=args)
-    node = ClipSegNode()
+    config = load_config()
+    node = SegmentationNode(config)
+    
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Shutting down ClipSeg node due to KeyboardInterrupt')
+        pass  # Allow graceful shutdown on CTRL+C.
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
+# -----------------------------------
+# Run the node when the script is executed directly.
+# -----------------------------------
 if __name__ == '__main__':
     main()
