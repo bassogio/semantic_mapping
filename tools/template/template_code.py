@@ -10,7 +10,7 @@ This template demonstrates how to:
   - Process incoming messages by updating header information (timestamp and frame_id)
     and publishing the resulting message on a second topic.
   - Optionally create a service server (e.g., using Trigger) that can respond to service calls.
-  - Wait until messages are received from all subscribed topics before stopping further checks.
+  - Wait until messages are received from all subscribed topics before ceasing further checks.
 
 Update your configuration file (config.yaml) to match these parameter names.
 """

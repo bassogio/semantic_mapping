@@ -49,14 +49,14 @@ class RotatedPoseNode(Node):
         # Load configuration parameters.
         # -------------------------------------------
         self.rotated_pose_topic  = self.node_config['rotated_pose_topic']
-        self.pose_topic  = self.node_config['pose_topic']
-        self.marker_topic  = self.node_config['marker_topic']
-        self.roll  = self.node_config['roll']
-        self.pitch  = self.node_config['pitch']
-        self.yaw  = self.node_config['yaw']
-        self.frame_id  = self.node_config['frame_id']
-        self.use_service  = self.node_config['use_service']
-        self.service_name  = self.node_config['service_name']
+        self.pose_topic          = self.node_config['pose_topic']
+        self.marker_topic        = self.node_config['marker_topic']
+        self.roll                = self.node_config['roll']
+        self.pitch               = self.node_config['pitch']
+        self.yaw                 = self.node_config['yaw']
+        self.frame_id            = self.node_config['frame_id']
+        self.use_service         = self.node_config['use_service']
+        self.service_name        = self.node_config['service_name']
     
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
@@ -76,14 +76,14 @@ class RotatedPoseNode(Node):
         # This allows any runtime overrides (e.g., via launch files) to update these defaults.
         # -------------------------------------------
         self.rotated_pose_topic  = self.get_parameter('rotated_pose_topic').value
-        self.pose_topic  = self.get_parameter('pose_topic').value
-        self.marker_topic  = self.get_parameter('marker_topic').value
-        self.roll  = self.get_parameter('roll').value
-        self.pitch  = self.get_parameter('pitch').value
-        self.yaw  = self.get_parameter('yaw').value
-        self.frame_id  = self.get_parameter('frame_id').value
-        self.use_service  = self.get_parameter('use_service').value
-        self.service_name  = self.get_parameter('service_name').value
+        self.pose_topic          = self.get_parameter('pose_topic').value
+        self.marker_topic        = self.get_parameter('marker_topic').value
+        self.roll                = self.get_parameter('roll').value
+        self.pitch               = self.get_parameter('pitch').value
+        self.yaw                 = self.get_parameter('yaw').value
+        self.frame_id            = self.get_parameter('frame_id').value
+        self.use_service         = self.get_parameter('use_service').value
+        self.service_name        = self.get_parameter('service_name').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -114,12 +114,17 @@ class RotatedPoseNode(Node):
             10                             # Queue size.
         )
 
-        self.get_logger().info(
-            f"RotatedPoseNode started with publishers on '{self.rotated_pose_topic}' and '{self.marker_topic}'."
-            f"frame_id '{self.frame_id}'."
-            f"Rotation angles set to roll={self.roll}°, pitch={self.pitch}°, yaw={self.yaw}°"
-        )
+        # -------------------------------------------
+        # Initialize flag to track if a message has been received.
+        # -------------------------------------------
+        self.received_pose = False
 
+        # -------------------------------------------
+        # Create a Timer to check if the subscribed topic has received at least one message.
+        # This timer will stop checking once a message has been received.
+        # -------------------------------------------
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
+        
         # -------------------------------------------
         # Create a Service Server.
         # -------------------------------------------
@@ -128,10 +133,30 @@ class RotatedPoseNode(Node):
             self.get_logger().info(f"Service server started on '{self.service_name}'")
     
     # -------------------------------------------
+    # Timer Callback to Check if the Subscribed Topic Has Received at Least One Message
+    # -------------------------------------------
+    def check_initial_subscriptions(self):
+        if not self.received_pose:
+            self.get_logger().info(f"Waiting for messages on topic: '{self.pose_topic}'")
+        else:
+            self.get_logger().info(
+                f"All subscribed topics have received at least one message. "
+                f"RotatedPoseNode started with publishers on '{self.rotated_pose_topic}' and '{self.marker_topic}', "
+                f"frame_id '{self.frame_id}',"
+                f" rotation angles set to roll={self.roll}°, pitch={self.pitch}°, yaw={self.yaw}°"
+            )
+            
+            self.subscription_check_timer.cancel()
+    
+    # -------------------------------------------
     # Pose Rotation Callback
     # -------------------------------------------
     def rotate_pose_callback(self, msg):
         try:
+            # Set the flag on receiving the first message.
+            if not self.received_pose:
+                self.received_pose = True
+
             # Extract original position and compute the rotated position.
             pos = np.array([
                 msg.pose.position.x,
@@ -141,7 +166,7 @@ class RotatedPoseNode(Node):
             rotated_pos = self.rotation_matrix.dot(pos)
             
             # Append the rotated position to the path for the marker.
-            new_point = Point()
+            new_point   = Point()
             new_point.x = float(rotated_pos[0])
             new_point.y = float(rotated_pos[1])
             new_point.z = float(rotated_pos[2])
@@ -194,7 +219,7 @@ class RotatedPoseNode(Node):
             
             self.marker_publisher.publish(marker)
             
-            self.get_logger().info("Published rotated pose and updated path marker.")
+            # self.get_logger().info("Published rotated pose and updated path marker.")
         except Exception as e:
             self.get_logger().error(f"Error processing pose: {e}")
 

@@ -53,9 +53,9 @@ class CameraNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.color_image_topic  = self.node_config['color_image_topic']
-        self.depth_image_topic  = self.node_config['depth_image_topic']
-        self.CameraInfo_topic   = self.node_config['CameraInfo_topic']
+        self.color_image_topic = self.node_config['color_image_topic']
+        self.depth_image_topic = self.node_config['depth_image_topic']
+        self.CameraInfo_topic  = self.node_config['CameraInfo_topic']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
@@ -67,9 +67,9 @@ class CameraNode(Node):
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # -------------------------------------------
-        self.color_image_topic  = self.get_parameter('color_image_topic').value
-        self.depth_image_topic  = self.get_parameter('depth_image_topic').value
-        self.CameraInfo_topic   = self.get_parameter('CameraInfo_topic').value
+        self.color_image_topic = self.get_parameter('color_image_topic').value
+        self.depth_image_topic = self.get_parameter('depth_image_topic').value
+        self.CameraInfo_topic  = self.get_parameter('CameraInfo_topic').value
         
         # -------------------------------------------
         # Setup RealSense pipeline
@@ -91,7 +91,7 @@ class CameraNode(Node):
         # -------------------------------------------
         self.color_image_publisher = self.create_publisher(Image, self.color_image_topic, 10)
         self.depth_image_publisher = self.create_publisher(Image, self.depth_image_topic, 10)
-        self.camera_info_publisher  = self.create_publisher(CameraInfo, self.CameraInfo_topic, 10)
+        self.camera_info_publisher = self.create_publisher(CameraInfo, self.CameraInfo_topic, 10)
 
         # -------------------------------------------
         # Create a Timer to process and publish camera data at a fixed interval (e.g., 10 Hz).
