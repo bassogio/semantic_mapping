@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ROS2 Node for Point Cloud Processing with Camera, Pose, and Depth Image Subscriptions.
 The node will wait until it receives at least one message from all subscribed topics,
@@ -8,13 +7,13 @@ and then it will stop checking for missing topics.
 # -----------------------------------
 # Import Statements
 # -----------------------------------
-import os       
-import yaml     
+import os
+import yaml
 import numpy as np
 from cv_bridge import CvBridge
 from transforms3d.quaternions import quat2mat
-import rclpy   
-from rclpy.node import Node  
+import rclpy
+from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, CameraInfo, Image
 from std_msgs.msg import Header
 from geometry_msgs.msg import PoseStamped
@@ -30,9 +29,9 @@ def load_config():
     Returns:
         dict: A dictionary containing configuration data.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir  = os.path.dirname(os.path.abspath(__file__))
     config_file = os.path.join(script_dir, '../../config/point_cloud_config.yaml')
-    
+
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -47,51 +46,51 @@ class PointCloudNode(Node):
     def __init__(self, config):
         # Initialize the node with a unique name.
         super().__init__('point_cloud_node')
-        
+
         # -------------------------------------------
         # Access the configuration section.
         # -------------------------------------------
         self.task_config = config['point_cloud_processing']
-        
+
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.point_cloud_topic = self.task_config['point_cloud_topic']
-        self.camera_parameters_topic = self.task_config['camera_parameters_topic']
-        self.depth_image_topic = self.task_config['depth_image_topic']
-        self.pose_topic = self.task_config['pose_topic']
-        self.max_distance = self.task_config['max_distance']
-        self.depth_scale = self.task_config['depth_scale']
-        self.frame_id = self.task_config['frame_id']
-        
+        self.point_cloud_topic        = self.task_config['point_cloud_topic']
+        self.camera_parameters_topic  = self.task_config['camera_parameters_topic']
+        self.depth_image_topic        = self.task_config['depth_image_topic']
+        self.pose_topic               = self.task_config['pose_topic']
+        self.max_distance             = self.task_config['max_distance']
+        self.depth_scale              = self.task_config['depth_scale']
+        self.frame_id                 = self.task_config['frame_id']
+
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('point_cloud_topic', self.point_cloud_topic)
-        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
-        self.declare_parameter('depth_image_topic', self.depth_image_topic)
-        self.declare_parameter('pose_topic', self.pose_topic)
-        self.declare_parameter('max_distance', self.max_distance)
-        self.declare_parameter('depth_scale', self.depth_scale)
-        self.declare_parameter('frame_id', self.frame_id)
-        
+        self.declare_parameter('point_cloud_topic',         self.point_cloud_topic)
+        self.declare_parameter('camera_parameters_topic',   self.camera_parameters_topic)
+        self.declare_parameter('depth_image_topic',         self.depth_image_topic)
+        self.declare_parameter('pose_topic',                self.pose_topic)
+        self.declare_parameter('max_distance',              self.max_distance)
+        self.declare_parameter('depth_scale',               self.depth_scale)
+        self.declare_parameter('frame_id',                  self.frame_id)
+
         # Retrieve the (possibly updated) parameter values.
-        self.point_cloud_topic = self.get_parameter('point_cloud_topic').value
-        self.camera_parameters_topic = self.get_parameter('camera_parameters_topic').value
-        self.depth_image_topic = self.get_parameter('depth_image_topic').value
-        self.pose_topic = self.get_parameter('pose_topic').value
-        self.max_distance = self.get_parameter('max_distance').value
-        self.depth_scale = self.get_parameter('depth_scale').value
-        self.frame_id = self.get_parameter('frame_id').value     
+        self.point_cloud_topic        = self.get_parameter('point_cloud_topic').value
+        self.camera_parameters_topic  = self.get_parameter('camera_parameters_topic').value
+        self.depth_image_topic        = self.get_parameter('depth_image_topic').value
+        self.pose_topic               = self.get_parameter('pose_topic').value
+        self.max_distance             = self.get_parameter('max_distance').value
+        self.depth_scale              = self.get_parameter('depth_scale').value
+        self.frame_id                 = self.get_parameter('frame_id').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
         # These will be updated when pose messages are received.
         # -------------------------------------------
-        self.Qw = 1.0  # Default orientation (identity quaternion)
-        self.Qx = 0.0
-        self.Qy = 0.0
-        self.Qz = 0.0
+        self.Qw     = 1.0  # Default orientation (identity quaternion)
+        self.Qx     = 0.0
+        self.Qy     = 0.0
+        self.Qz     = 0.0
         self.pose_x = 0.0
         self.pose_y = 0.0
         self.pose_z = 0.0
@@ -105,44 +104,44 @@ class PointCloudNode(Node):
         # Create a Publisher.
         # -------------------------------------------
         self.point_cloud_publisher = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
-        
+
         # -------------------------------------------
         # Create Subscribers.
         # -------------------------------------------
         self.camera_subscription = self.create_subscription(
-            CameraInfo,                        # Message type.
-            self.camera_parameters_topic,      # Topic name.
-            self.camera_callback,              # Callback function.
-            10                                 # Queue size.
+            CameraInfo,                      # Message type.
+            self.camera_parameters_topic,    # Topic name.
+            self.camera_callback,            # Callback function.
+            10                               # Queue size.
         )
 
         self.pose_subscription = self.create_subscription(
-            PoseStamped,                       # Message type.
-            self.pose_topic,                   # Topic name.
-            self.pose_callback,                # Callback function.
-            10                                 # Queue size.
+            PoseStamped,                     # Message type.
+            self.pose_topic,                 # Topic name.
+            self.pose_callback,              # Callback function.
+            10                               # Queue size.
         )
 
         self.depth_image_subscription = self.create_subscription(
-            Image,                             # Message type.
-            self.depth_image_topic,            # Topic name.
-            self.point_cloud_callback,         # Callback function.
-            10                                 # Queue size.
+            Image,                           # Message type.
+            self.depth_image_topic,          # Topic name.
+            self.point_cloud_callback,       # Callback function.
+            10                               # Queue size.
         )
-        
+
         # -------------------------------------------
         # Flags for tracking if at least one message has been received.
         # -------------------------------------------
         self.received_camera = False
-        self.received_pose = False
-        self.received_depth = False
+        self.received_pose   = False
+        self.received_depth  = False
 
         # -------------------------------------------
         # Create a Timer to check if subscribed topics have all received messages.
         # This timer will only run until all topics have received one message.
         # -------------------------------------------
         self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
-    
+
     # -------------------------------------------
     # Timer Callback to Check Initial Subscriptions
     # -------------------------------------------
@@ -154,13 +153,13 @@ class PointCloudNode(Node):
             not_received.append(f"'{self.pose_topic}'")
         if not self.received_depth:
             not_received.append(f"'{self.depth_image_topic}'")
-            
+
         if not_received:
             self.get_logger().info(f"Waiting for messages on topics: {', '.join(not_received)}")
         else:
             self.get_logger().info(
                 "All subscribed topics have received"
-                f"PointCloudNode started with publisher on '{self.point_cloud_topic}' and frame_id '{self.frame_id}'."
+                f" PointCloudNode started with publisher on '{self.point_cloud_topic}' and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
 
@@ -171,6 +170,7 @@ class PointCloudNode(Node):
         # Update flag indicating the camera topic has been received.
         if not self.received_camera:
             self.received_camera = True
+
         # Extract camera parameters.
         self.fx = msg.k[0]
         self.fy = msg.k[4]
@@ -184,12 +184,13 @@ class PointCloudNode(Node):
         # Update flag indicating the pose topic has been received.
         if not self.received_pose:
             self.received_pose = True
+
         # Update quaternion components from the pose message.
         self.Qx = msg.pose.orientation.x
         self.Qy = msg.pose.orientation.y
         self.Qz = msg.pose.orientation.z
         self.Qw = msg.pose.orientation.w
-        
+
         # Update position (translation) components from the pose message.
         self.pose_x = msg.pose.position.x
         self.pose_y = msg.pose.position.y
@@ -239,7 +240,7 @@ class PointCloudNode(Node):
 
             # Combine the valid 3D points into an (N, 3) numpy array.
             points = np.stack((x, y, z), axis=-1)
-            
+
             # Convert the quaternion to a 3x3 rotation matrix.
             # transforms3d expects quaternion order as (w, x, y, z).
             quat = [self.Qw, self.Qx, self.Qy, self.Qz]
@@ -247,19 +248,19 @@ class PointCloudNode(Node):
 
             # Apply the rotation from the quaternion to the point cloud.
             points_rotated = points @ rotation_matrix.T
-            
+
             # Apply translation from the pose (after rotation).
             translation = np.array([self.pose_x, self.pose_y, self.pose_z])
-            points_transformed = points_rotated + translation 
+            points_transformed = points_rotated + translation
 
             # Create PointCloud2 message.
             header = Header()
-            header.stamp = self.get_clock().now().to_msg()
+            header.stamp    = self.get_clock().now().to_msg()
             header.frame_id = self.frame_id
-            processed_msg = pc2.create_cloud_xyz32(header, points_transformed)
+            processed_msg   = pc2.create_cloud_xyz32(header, points_transformed)
 
             self.point_cloud_publisher.publish(processed_msg)
-            
+
             # Log debug information.
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")
         except Exception as e:
@@ -275,8 +276,8 @@ def main(args=None):
     """
     rclpy.init(args=args)
     config = load_config()
-    node = PointCloudNode(config)
-    
+    node   = PointCloudNode(config)
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

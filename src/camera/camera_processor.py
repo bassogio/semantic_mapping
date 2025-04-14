@@ -8,13 +8,13 @@ and publishes color and depth image messages (as well as camera info) continuous
 # -----------------------------------
 # Import Statements
 # -----------------------------------
-import os       
-import yaml     
+import os
+import yaml
 import pyrealsense2 as rs
 import numpy as np
 from cv_bridge import CvBridge
-import rclpy    
-from rclpy.node import Node  
+import rclpy
+from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 
 # -----------------------------------
@@ -27,7 +27,7 @@ def load_config():
     Returns:
         dict: A dictionary containing configuration data.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir  = os.path.dirname(os.path.abspath(__file__))
     config_file = os.path.join(script_dir, '../../config/camera_config.yaml')
     
     if os.path.exists(config_file):
@@ -56,13 +56,13 @@ class CameraNode(Node):
         self.color_image_topic = self.node_config['color_image_topic']
         self.depth_image_topic = self.node_config['depth_image_topic']
         self.CameraInfo_topic  = self.node_config['CameraInfo_topic']
-
+        
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
         self.declare_parameter('color_image_topic', self.color_image_topic)
         self.declare_parameter('depth_image_topic', self.depth_image_topic)
-        self.declare_parameter('CameraInfo_topic', self.CameraInfo_topic)
+        self.declare_parameter('CameraInfo_topic',  self.CameraInfo_topic)
         
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
@@ -72,80 +72,81 @@ class CameraNode(Node):
         self.CameraInfo_topic  = self.get_parameter('CameraInfo_topic').value
         
         # -------------------------------------------
-        # Setup RealSense pipeline
+        # Setup RealSense pipeline.
         # -------------------------------------------
         self.pipeline = rs.pipeline()
-        self.config = rs.config()
+        self.config   = rs.config()
         self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
         self.config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
         self.pipeline.start(self.config)
-
+        
         # -------------------------------------------
         # Initialize CvBridge once for the node.
         # -------------------------------------------
         self.bridge = CvBridge()
-
+        
         # -------------------------------------------
         # Create Publishers.
         # Use the topics specified in the configuration.
         # -------------------------------------------
-        self.color_image_publisher = self.create_publisher(Image, self.color_image_topic, 10)
-        self.depth_image_publisher = self.create_publisher(Image, self.depth_image_topic, 10)
-        self.camera_info_publisher = self.create_publisher(CameraInfo, self.CameraInfo_topic, 10)
-
+        self.color_image_publisher = self.create_publisher(Image,       self.color_image_topic, 10)
+        self.depth_image_publisher = self.create_publisher(Image,       self.depth_image_topic, 10)
+        self.camera_info_publisher = self.create_publisher(CameraInfo,  self.CameraInfo_topic,  10)
+        
         # -------------------------------------------
         # Create a Timer to process and publish camera data at a fixed interval (e.g., 10 Hz).
         # You can adjust the rate as needed.
         # -------------------------------------------
         self.create_timer(0.1, self.image_callback)
-
+        
         self.get_logger().info(
-            f"CameraNode started with publishers on '{self.color_image_topic}', '{self.depth_image_topic}' and '{self.CameraInfo_topic}."
+            f"CameraNode started with publishers on '{self.color_image_topic}', "
+            f"'{self.depth_image_topic}' and '{self.CameraInfo_topic}.'"
         )
     
     # -------------------------------------------
     # Image Processing Callback 
     # -------------------------------------------
     def image_callback(self):
-        # Wait for frames from RealSense camera
+        # Wait for frames from RealSense camera.
         frames = self.pipeline.wait_for_frames()
-
-        # Get color and depth frames
+        
+        # Get color and depth frames.
         color_frame = frames.get_color_frame()
         depth_frame = frames.get_depth_frame()
-
+        
         if not color_frame or not depth_frame:
             self.get_logger().warn("No frames received")
             return
-
-        # Convert RealSense frames to OpenCV format
+        
+        # Convert RealSense frames to OpenCV format.
         color_image = np.asanyarray(color_frame.get_data())
         depth_image = np.asanyarray(depth_frame.get_data())
-
-        # Convert to ROS Image messages
+        
+        # Convert to ROS Image messages.
         color_image_msg = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
         depth_image_msg = self.bridge.cv2_to_imgmsg(depth_image, encoding="16UC1")
-
-        # Add header to images with timestamp
+        
+        # Add header to images with timestamp.
         now = self.get_clock().now().to_msg()
         color_image_msg.header.stamp = now
         depth_image_msg.header.stamp = now
-
-        # Publish the messages
+        
+        # Publish the messages.
         self.color_image_publisher.publish(color_image_msg)
         self.depth_image_publisher.publish(depth_image_msg)
         
-        # Process and publish camera info
+        # Process and publish camera info.
         self.camera_parameters_callback(color_frame)
-
+    
     # -------------------------------------------
-    # Cameras Parameters Callback 
+    # Camera Parameters Callback 
     # -------------------------------------------
     def camera_parameters_callback(self, color_frame):
         camera_info = CameraInfo()
-        # Retrieve parameters from the RealSense stream profile
+        # Retrieve parameters from the RealSense stream profile.
         video_profile = color_frame.profile.as_video_stream_profile()
-        intrinsics = video_profile.intrinsics
+        intrinsics  = video_profile.intrinsics
         camera_info.width = intrinsics.width
         camera_info.height = intrinsics.height
         camera_info.k[0] = intrinsics.fx
@@ -162,7 +163,7 @@ class CameraNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     config = load_config()
-    node = CameraNode(config)
+    node   = CameraNode(config)
     
     try:
         rclpy.spin(node)

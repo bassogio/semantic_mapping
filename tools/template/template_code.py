@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generic ROS2 Node Template with Multiple Publishers and Subscribers,
 Optional Service, and Header Handling
