@@ -5,7 +5,7 @@ segmentation_processing:
   # color_image_topic: "/camera/color/image_raw"
   # camera_parameters_topic: "/camera/CameraInfo"
   color_image_topic: "/davis/left/image_raw"
-  camera_parameters_topic: "/davis/left/camera_info"  
+  camera_parameters_topic: "/davis/left/camera_info"
   labels:
     # - name: ball
     #   id: 0

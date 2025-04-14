@@ -31,7 +31,7 @@ def load_config():
             config = yaml.safe_load(f)
         return config
     else:
-        return {}
+        raise FileNotFoundError(f"Config file not found at: {config_file}")
 
 # -----------------------------------
 # ROS2 Node Definition
