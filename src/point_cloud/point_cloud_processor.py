@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""
+ROS2 Node for Point Cloud Processing with Camera, Pose, and Depth Image Subscriptions.
+The node will wait until it receives at least one message from all subscribed topics,
+and then it will stop checking for missing topics.
+"""
+
 # -----------------------------------
 # Import Statements
 # -----------------------------------
@@ -59,7 +66,6 @@ class PointCloudNode(Node):
         
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
-        # This allows you to change the parameters without restarting the node.
         # -------------------------------------------
         self.declare_parameter('point_cloud_topic', self.point_cloud_topic)
         self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
@@ -112,28 +118,60 @@ class PointCloudNode(Node):
 
         self.pose_subscription = self.create_subscription(
             PoseStamped,                       # Message type.
-            self.pose_topic,             # Topic name.
+            self.pose_topic,                   # Topic name.
             self.pose_callback,                # Callback function.
             10                                 # Queue size.
         )
 
         self.depth_image_subscription = self.create_subscription(
             Image,                             # Message type.
-            self.depth_image_topic,             # Topic name.
+            self.depth_image_topic,            # Topic name.
             self.point_cloud_callback,         # Callback function.
             10                                 # Queue size.
         )
-
-        self.get_logger().info(
-            f"PointCloudNode started with publisher on '{self.point_cloud_topic}'."
-            f"frame_id '{self.frame_id}'."
-        )
         
+        # -------------------------------------------
+        # Flags for tracking if at least one message has been received.
+        # -------------------------------------------
+        self.received_camera = False
+        self.received_pose = False
+        self.received_depth = False
+
+        # -------------------------------------------
+        # Create a Timer to check if subscribed topics have all received messages.
+        # This timer will only run until all topics have received one message.
+        # -------------------------------------------
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
+    
+    # -------------------------------------------
+    # Timer Callback to Check Initial Subscriptions
+    # -------------------------------------------
+    def check_initial_subscriptions(self):
+        not_received = []
+        if not self.received_camera:
+            not_received.append(f"'{self.camera_parameters_topic}'")
+        if not self.received_pose:
+            not_received.append(f"'{self.pose_topic}'")
+        if not self.received_depth:
+            not_received.append(f"'{self.depth_image_topic}'")
+            
+        if not_received:
+            self.get_logger().info(f"Waiting for messages on topics: {', '.join(not_received)}")
+        else:
+            self.get_logger().info(
+                "All subscribed topics have received"
+                f"PointCloudNode started with publisher on '{self.point_cloud_topic}' and frame_id '{self.frame_id}'."
+            )
+            self.subscription_check_timer.cancel()
+
     # -------------------------------------------
     # Camera Callback Function
     # -------------------------------------------
     def camera_callback(self, msg):
-        # Extract camera parameters
+        # Update flag indicating the camera topic has been received.
+        if not self.received_camera:
+            self.received_camera = True
+        # Extract camera parameters.
         self.fx = msg.k[0]
         self.fy = msg.k[4]
         self.cx = msg.k[2]
@@ -143,12 +181,16 @@ class PointCloudNode(Node):
     # Pose Callback Function
     # -------------------------------------------
     def pose_callback(self, msg):
-        # Update quaternion components from the pose message
+        # Update flag indicating the pose topic has been received.
+        if not self.received_pose:
+            self.received_pose = True
+        # Update quaternion components from the pose message.
         self.Qx = msg.pose.orientation.x
         self.Qy = msg.pose.orientation.y
         self.Qz = msg.pose.orientation.z
         self.Qw = msg.pose.orientation.w
-        # Update position (translation) components from the pose message
+        
+        # Update position (translation) components from the pose message.
         self.pose_x = msg.pose.position.x
         self.pose_y = msg.pose.position.y
         self.pose_z = msg.pose.position.z
@@ -157,57 +199,60 @@ class PointCloudNode(Node):
     # Point Cloud Callback Function
     # -------------------------------------------
     def point_cloud_callback(self, msg):
-        """Callback to process the depth image and generate a point cloud."""
-        # Ensure camera parameters are initialized
-        if not self.fx or not self.fy or not self.cx or not self.cy:
+        # Update flag indicating the depth image topic has been received.
+        if not self.received_depth:
+            self.received_depth = True
+
+        # Ensure camera parameters are initialized.
+        if not hasattr(self, 'fx') or not hasattr(self, 'fy') or not hasattr(self, 'cx') or not hasattr(self, 'cy'):
             self.get_logger().warn("Camera parameters not initialized. Skipping point cloud processing.")
             return
 
         try:
-            # Convert the depth image to an OpenCV format
+            # Convert the depth image to an OpenCV format.
             depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
 
-            # Validate depth image dimensions
+            # Validate depth image dimensions.
             if len(depth_image.shape) != 2:
                 self.get_logger().error(f"Invalid depth image shape: {depth_image.shape}. Expected a 2D image.")
                 return
 
-            # Apply depth scaling (convert raw depth to meters)
+            # Apply depth scaling (convert raw depth to meters).
             depth = depth_image * self.depth_scale
             rows, cols = depth.shape
 
-            # Create meshgrid for pixel indices
+            # Create meshgrid for pixel indices.
             u, v = np.meshgrid(np.arange(cols), np.arange(rows))
             u = u.astype(np.float32)
             v = v.astype(np.float32)
 
-            # Compute 3D coordinates using the pinhole camera model
+            # Compute 3D coordinates using the pinhole camera model.
             z = depth
             x = z * (u - self.cx) / self.fx
             y = z * (v - self.cy) / self.fy
 
-            # Filter out points beyond the maximum distance or invalid values
+            # Filter out points beyond the maximum distance or invalid values.
             valid = (z > 0) & (z < self.max_distance)
             x = x[valid]
             y = y[valid]
             z = z[valid]
 
-            # Combine the valid 3D points into an (N, 3) numpy array
+            # Combine the valid 3D points into an (N, 3) numpy array.
             points = np.stack((x, y, z), axis=-1)
             
             # Convert the quaternion to a 3x3 rotation matrix.
-            # transforms3d expects quaternion order as (w, x, y, z)
+            # transforms3d expects quaternion order as (w, x, y, z).
             quat = [self.Qw, self.Qx, self.Qy, self.Qz]
             rotation_matrix = quat2mat(quat)
 
-            # Apply the rotation from the quaternion to the point cloud
+            # Apply the rotation from the quaternion to the point cloud.
             points_rotated = points @ rotation_matrix.T
             
-            # Now apply the translation from the pose (after rotation)
+            # Apply translation from the pose (after rotation).
             translation = np.array([self.pose_x, self.pose_y, self.pose_z])
             points_transformed = points_rotated + translation 
 
-            # Create PointCloud2 message
+            # Create PointCloud2 message.
             header = Header()
             header.stamp = self.get_clock().now().to_msg()
             header.frame_id = self.frame_id
@@ -215,15 +260,10 @@ class PointCloudNode(Node):
 
             self.point_cloud_publisher.publish(processed_msg)
             
-            # self.get_logger().info(
-            #     f"Published processed message with frame_id: '{processed_msg.header.frame_id}', "
-            #     f"timestamp: {processed_msg.header.stamp}"
-            # )
-
-            # Log debug information
+            # Log debug information.
             self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")
         except Exception as e:
-            self.get_logger().error(f"Error: {e}")
+            self.get_logger().error(f"Error processing point cloud: {e}")
 
 # -----------------------------------
 # Main Entry Point
@@ -231,7 +271,7 @@ class PointCloudNode(Node):
 def main(args=None):
     """
     The main function initializes the ROS2 system, loads configuration parameters,
-    creates an instance of the GeneralTaskNode, and spins to process messages until shutdown.
+    creates an instance of the PointCloudNode, and spins to process messages until shutdown.
     """
     rclpy.init(args=args)
     config = load_config()

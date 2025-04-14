@@ -10,6 +10,7 @@ This template demonstrates how to:
   - Process incoming messages by updating header information (timestamp and frame_id)
     and publishing the resulting message on a second topic.
   - Optionally create a service server (e.g., using Trigger) that can respond to service calls.
+  - Wait until messages are received from all subscribed topics before stopping further checks.
 
 Update your configuration file (config.yaml) to match these parameter names.
 """
@@ -69,6 +70,7 @@ class GeneralTaskNode(Node):
       - Processes each incoming message by updating the header (with the current timestamp and
         configured frame_id) and publishing the processed message.
       - Optionally provides a service server (using std_srvs/Trigger) if enabled.
+      - Waits until it receives a message from all subscribed topics before ceasing further checks.
     """
     def __init__(self, config):
         # Initialize the node with a unique name.
@@ -150,11 +152,17 @@ class GeneralTaskNode(Node):
             10                          # Queue size.
         )
         
-        self.get_logger().info(
-            f"GeneralTaskNode started with publishers on '{self.publisher_topic}' and '{self.publisher_topic2}', "
-            f"subscribers on '{self.subscriber_topic}' and '{self.subscriber_topic2}', "
-            f"and frame_id '{self.frame_id}'."
-        )
+        # -------------------------------------------
+        # Initialize flags to track if each subscriber has received a message.
+        # -------------------------------------------
+        self.received_sub1 = False
+        self.received_sub2 = False
+
+        # -------------------------------------------
+        # Create a Timer to check if all subscribed topics have received at least one message.
+        # This timer will stop checking once messages from both topics have been received.
+        # -------------------------------------------
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
         
         # -------------------------------------------
         # OPTIONAL: Create a Service Server.
@@ -164,6 +172,27 @@ class GeneralTaskNode(Node):
         if self.use_service:
             self.service_server = self.create_service(Trigger, self.service_name, self.service_callback)
             self.get_logger().info(f"Service server started on '{self.service_name}'")
+    
+    # -------------------------------------------
+    # Timer Callback to Check if All Subscribed Topics Have Received at Least One Message
+    # -------------------------------------------
+    def check_initial_subscriptions(self):
+        waiting_topics = []
+        if not self.received_sub1:
+            waiting_topics.append(f"'{self.subscriber_topic}'")
+        if not self.received_sub2:
+            waiting_topics.append(f"'{self.subscriber_topic2}'")
+            
+        if waiting_topics:
+            self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
+        else:
+            self.get_logger().info(
+                "All subscribed topics have received at least one message."
+                f"GeneralTaskNode started with publishers on '{self.publisher_topic}' and '{self.publisher_topic2}', "
+                f"subscribers on '{self.subscriber_topic}' and '{self.subscriber_topic2}', "
+                f"and frame_id '{self.frame_id}'."
+            )
+            self.subscription_check_timer.cancel()
     
     # -------------------------------------------
     # Subscriber Callback Function for Topic 1
@@ -182,6 +211,9 @@ class GeneralTaskNode(Node):
         Parameters:
             msg (PoseStamped): The received message.
         """
+        if not self.received_sub1:
+            self.received_sub1 = True
+
         self.get_logger().info(
             f"(Subscriber 1) Received message with frame_id: '{msg.header.frame_id}', timestamp: {msg.header.stamp}"
         )
@@ -210,6 +242,9 @@ class GeneralTaskNode(Node):
         Parameters:
             msg (PoseStamped): The received message.
         """
+        if not self.received_sub2:
+            self.received_sub2 = True
+
         self.get_logger().info(
             f"(Subscriber 2) Received message with frame_id: '{msg.header.frame_id}', timestamp: {msg.header.stamp}"
         )
