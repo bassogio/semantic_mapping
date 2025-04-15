@@ -20,27 +20,28 @@ trap cleanup SIGINT SIGTERM
 source /opt/ros/humble/setup.bash
 
 # # Start additional Python nodes (they continue running)
+python3 src/point_cloud/point_cloud_processor.py &
+PIDS+=($!)
+python3 src/rotated_pose_message/rotated_pose_processor.py &
+PIDS+=($!)
+# python3 src/occupancy_grid/occupancy_grid_processor.py &
+# PIDS+=($!)
 # python3 src/segmentation/segmentation_processor.py &
 # PIDS+=($!)
 
-# # --- Wait for the segmentation node to be ready ---
-# # Instead of waiting for the process to exit (which never happens normally),
-# # we poll for its readiness by checking if the segmentation topic is available.
-# echo "Waiting for the segmentation node to publish /camera/segmentation..."
-# timeout=60  # seconds to wait before timing out
-# while ! ros2 topic list | grep -q "/camera/segmentation"; do
-#   sleep 1
-#   ((timeout--))
-#   if [ $timeout -le 0 ]; then
-#     echo "Timeout waiting for segmentation topic /camera/segmentation. Exiting."
-#     cleanup
-#   fi
-# done
-# echo "Segmentation node is ready. Proceeding with bag playback."
+# Prompt the user to press Enter or Space to continue
+echo "Press 'Enter' or 'Space' to continue..."
+while true; do
+  # -n1: read one character
+  # -rs: silent mode (won't echo the character)
+  read -n1 -rs key
+  # Check if the pressed key is Space (" ") or Enter (newline, interpreted as an empty string)
+  if [ -z "$key" ] || [ "$key" = " " ]; then
+    break
+  fi
+done
 
-# python3 src/point_cloud/point_cloud_processor.py &
-# PIDS+=($!)
-
+# Continue with your commands:
 # Change to the data directory
 cd /workspace/data
 
