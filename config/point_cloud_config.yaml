@@ -9,6 +9,6 @@ point_cloud_processing:
   depth_scale: 1.0
   depth_image_topic: "/davis/left/depth_image_raw"
   camera_parameters_topic: "/davis/left/camera_info"  
-  pose_topic: "/davis/left/pose"
+  # pose_topic: "/davis/left/pose"
   pose_topic: "/davis/rotated_pose"
 

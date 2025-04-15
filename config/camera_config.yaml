@@ -2,5 +2,5 @@
 camera_processing:
   color_image_topic: "/camera/color/image_raw" 
   depth_image_topic: "/camera/depth/image_raw"
-  CameraInfo_topic: "/camera/CameraInfo"
+  camera_info_topic: "/camera/camera_info"
   
