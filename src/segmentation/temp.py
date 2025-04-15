@@ -18,7 +18,6 @@ from transformers import (
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from contextlib import nullcontext  # Added to use as fallback context manager
 
 # -----------------------------------
 # Configuration Loader Function
@@ -26,11 +25,13 @@ from contextlib import nullcontext  # Added to use as fallback context manager
 def load_config():
     """
     Load configuration parameters.
+
     Returns:
         dict: A dictionary containing configuration data.
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file = os.path.join(script_dir, '../../../config/segmentation_config.yaml')
+    config_file = os.path.join(script_dir, '../../config/segmentation_config.yaml')
+
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -54,47 +55,39 @@ class SegmentationNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.segmentation_topic       = self.node_config['segmentation_topic']
+        self.segmentated_rgb_topic    = self.node_config['segmentated_rgb_topic']
+        self.segmentated_depth_topic  = self.node_config['segmentated_depth_topic']
         self.color_image_topic        = self.node_config['color_image_topic']
+        self.depth_image_topic        = self.node_config['depth_image_topic']
         self.frame_id                 = self.node_config['frame_id']
         self.labels                   = self.node_config['labels']
-        self.model                    = self.node_config['model']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('segmentation_topic',      self.segmentation_topic)
-        self.declare_parameter('color_image_topic',       self.color_image_topic)
-        self.declare_parameter('frame_id',                self.frame_id)
-        self.declare_parameter('model',                   self.model)
+        self.declare_parameter('segmentated_rgb_topic',      self.segmentated_rgb_topic)
+        self.declare_parameter('segmentated_depth_topic',    self.segmentated_depth_topic)
+        self.declare_parameter('color_image_topic',          self.color_image_topic)
+        self.declare_parameter('frame_id',                   self.frame_id)
 
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # -------------------------------------------
-        self.segmentation_topic       = self.get_parameter('segmentation_topic').value
-        self.color_image_topic        = self.get_parameter('color_image_topic').value
-        self.frame_id                 = self.get_parameter('frame_id').value
-        self.model                    = self.get_parameter('model').value
-        
+        self.segmentated_rgb_topic       = self.get_parameter('segmentated_rgb_topic').value
+        self.segmentated_depth_topic     = self.get_parameter('segmentated_depth_topic').value
+        self.color_image_topic           = self.get_parameter('color_image_topic').value
+        self.frame_id                    = self.get_parameter('frame_id').value
+
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
         # -------------------------------------------
-        # Determine the device: use GPU if available.
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.get_logger().info(f"Using device: {self.device}")
 
-        # Prepare text prompts from the label names.
-        self.prompts = [label['name'] for label in self.labels]
-
-        # Initialize CvBridge once for the node.
-        self.bridge = CvBridge()
-
         # Let user choose which segmentation model to use.
-        # self.model_input = ''
-        self.model_input = self.model
-
+        self.model_input = ''
         while True:
-            # self.model_input = input("Please choose a model (clipseg/segformer): ").strip().lower()
+            self.model_input = input("Please choose a model (clipseg/segformer): ").strip().lower()
             if self.model_input == 'clipseg':
                 self.get_logger().info("You chose the CLIPSeg model.")
                 self.clipseg_initialization()
@@ -106,15 +99,34 @@ class SegmentationNode(Node):
             else:
                 self.get_logger().error("Invalid model choice. Please choose 'clipseg' or 'segformer'.")
 
+        # Prepare text prompts from the label names.
+        self.prompts = [label['name'] for label in self.labels]
+
+        # Initialize CvBridge once for the node.
+        self.bridge = CvBridge()
+
+        # Initialize a variable to store the latest depth image.
+        self.latest_depth_image = None
+
         # -------------------------------------------
         # Create Publishers.
         # -------------------------------------------
-        self.segmentation_publisher = self.create_publisher(Image, self.segmentation_topic, 10)
+        self.segmentation_publisher = self.create_publisher(Image, self.segmentated_rgb_topic, 10)
+        self.combined_depth_publisher = self.create_publisher(Image, self.segmentated_depth_topic, 10)
 
         # -------------------------------------------
         # Create Subscribers.
         # -------------------------------------------
-        self.subscription = self.create_subscription(
+        # Depth image subscriber with a dedicated callback.
+        self.depth_subscription = self.create_subscription(
+            Image,                      # Message type.
+            self.depth_image_topic,     # Topic name.
+            self.depth_callback,        # Callback function.
+            10                          # Queue size.
+        )
+
+        # RGB image subscriber triggering segmentation.
+        self.rgb_subscription = self.create_subscription(
             Image,                      # Message type.
             self.color_image_topic,     # Topic name.
             self.segmentation_callback, # Callback function.
@@ -122,16 +134,15 @@ class SegmentationNode(Node):
         )
 
         # -------------------------------------------
-        # Initialize flags to track if a color image has been received.
+        # Initialize flags to track if each subscriber has received a message.
         # -------------------------------------------
-        self.received_color_image = False
+        self.received_rgb_image = False
+        self.received_depth_image = False
 
-        # Timer to check if the subscribed topic has received at least one message.
+        # -------------------------------------------
+        # Create a Timer to check if all subscribed topics have received at least one message.
+        # -------------------------------------------
         self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
-
-        # Define the target resolution for processing (adjust as needed).
-        self.target_width = 320
-        self.target_height = 240
 
     # -------------------------------------------
     # Function to initialize the ClipSeg model.
@@ -140,27 +151,8 @@ class SegmentationNode(Node):
         self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined", use_fast=False)
         self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
         self.model.to(self.device)
-        
-        # Enable mixed precision if using GPU.
-        if self.device.type == "cuda":
-            self.model.half()
-
-        # TorchScript conversion is commented out for CLIPSeg to avoid incompatibility issues.
-        # self.model = torch.jit.script(self.model)
-
         self.get_logger().info("CLIPSeg model loaded successfully.")
 
-        # Precompute text tokens from prompts and move them to the device.
-        self.precomputed_text_inputs = self.processor(
-            text=self.prompts,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
-        for key, value in self.precomputed_text_inputs.items():
-            if isinstance(value, torch.Tensor):
-                self.precomputed_text_inputs[key] = value.to(self.device)
-        
     # -------------------------------------------
     # Function to initialize the SegFormer model.
     # -------------------------------------------
@@ -169,40 +161,51 @@ class SegmentationNode(Node):
         self.feature_extractor = SegformerFeatureExtractor.from_pretrained(model_name)
         self.model = SegformerForSemanticSegmentation.from_pretrained(model_name)
         self.model.to(self.device)
-        
-        # Enable mixed precision if using GPU.
-        if self.device.type == "cuda":
-            self.model.half()
-        
-        # TorchScript conversion is optional. Uncomment if supported.
-        # self.model = torch.jit.script(self.model)
-
-        self.get_logger().info("SegFormer model loaded successfully.")
+        self.get_logger().info("SegFormer loaded successfully.")
 
     # -------------------------------------------
-    # Timer Callback to Check Subscription Initialization
+    # Timer Callback to Check if All Subscribed Topics Have Received at Least One Message.
     # -------------------------------------------
     def check_initial_subscriptions(self):
         waiting_topics = []
-        if not self.received_color_image:
+        if not self.received_rgb_image:
             waiting_topics.append(f"'{self.color_image_topic}'")
+        if not self.received_depth_image:
+            waiting_topics.append(f"'{self.depth_image_topic}'")
+            
         if waiting_topics:
             self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
         else:
             self.get_logger().info(
                 "All subscribed topics have received at least one message.\n"
                 f"Using '{self.model_input}' model for segmentation.\n"
-                f"SegmentationNode started with publishers on '{self.segmentation_topic}', "
-                f"subscriber on '{self.color_image_topic}', and frame_id '{self.frame_id}'."
+                f"SegmentationNode started with publishers on '{self.segmentated_rgb_topic}' and '{self.segmentated_depth_topic}',\n"
+                f"subscribers on '{self.color_image_topic}' and '{self.depth_image_topic}',\n"
+                f"and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
 
     # -------------------------------------------
-    # Segmentation Callback Function 
+    # Depth Image Callback Function.
+    # -------------------------------------------
+    def depth_callback(self, msg):
+        try:
+            # Convert the ROS image message to a NumPy array.
+            # Assuming the depth image encoding is "32FC1".
+            cv_depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="32FC1")
+            self.latest_depth_image = cv_depth_image.astype(np.float32)
+            if not self.received_depth_image:
+                self.received_depth_image = True
+            self.get_logger().debug("Received and stored a new depth image.")
+        except CvBridgeError as e:
+            self.get_logger().error(f'CvBridge Error in depth callback: {e}')
+
+    # -------------------------------------------
+    # Segmentation Callback Function.
     # -------------------------------------------
     def segmentation_callback(self, msg):
-        if not self.received_color_image:
-            self.received_color_image = True
+        if not self.received_rgb_image:
+            self.received_rgb_image = True
 
         try:
             # Convert the ROS image message to an OpenCV image.
@@ -213,44 +216,32 @@ class SegmentationNode(Node):
 
         # Convert the OpenCV BGR image to a PIL RGB image.
         pil_image = PILImage.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
-        # Resize image to lower resolution to speed up processing.
-        pil_image = pil_image.resize((self.target_width, self.target_height))
-
-        # Set up a proper autocast context using the recommended API.
-        if self.device.type == "cuda":
-            autocast_cm = torch.amp.autocast(device_type="cuda")
-        else:
-            autocast_cm = nullcontext()
 
         # Process the image based on the chosen model.
         if self.model_input == 'clipseg':
-            # Process image portion and reuse precomputed text tokens.
-            image_inputs = self.processor(
+            inputs = self.processor(
+                text=self.prompts,
                 images=[pil_image] * len(self.prompts),
+                padding="max_length",
+                truncation=True,
                 return_tensors="pt"
             )
-            for key, value in image_inputs.items():
+            for key, value in inputs.items():
                 if isinstance(value, torch.Tensor):
-                    image_inputs[key] = value.to(self.device)
-
-            # Merge precomputed text inputs into image_inputs.
-            image_inputs.update(self.precomputed_text_inputs)
-
-            # Use the updated autocast context for mixed precision inference.
-            with torch.no_grad(), autocast_cm:
-                outputs = self.model(**image_inputs)
+                    inputs[key] = value.to(self.device)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
             preds = outputs.logits
-
-            # For CLIPSeg, apply sigmoid and then determine the class.
             processed_preds = torch.sigmoid(preds)
+            # For CLIPSeg we use argmax over the single batch dimension.
             combined_preds = processed_preds.squeeze(0).argmax(dim=0).cpu().numpy()
-
+            
         elif self.model_input == 'segformer':
             inputs = self.feature_extractor(images=pil_image, return_tensors="pt")
             for key, value in inputs.items():
                 if isinstance(value, torch.Tensor):
                     inputs[key] = value.to(self.device)
-            with torch.no_grad(), autocast_cm:
+            with torch.no_grad():
                 outputs = self.model(**inputs)
             preds = outputs.logits  # Shape: [batch, num_labels, height, width]
             combined_preds = preds.argmax(dim=1)[0].cpu().numpy()
@@ -261,28 +252,63 @@ class SegmentationNode(Node):
         # Create a colored segmentation mask for visualization.
         colored_mask = np.zeros((combined_preds.shape[0], combined_preds.shape[1], 3), dtype=np.uint8)
         for label in self.labels:
-            # Corrected dictionary access using square brackets
             colored_mask[combined_preds == label['id']] = label['color']
 
-        # Convert the segmentation mask into a ROS image message and publish.
+        # Publish the colored segmentation mask.
         try:
             seg_msg = self.bridge.cv2_to_imgmsg(colored_mask, encoding="rgb8")
             self.segmentation_publisher.publish(seg_msg)
             self.get_logger().info("Published segmentation mask.")
         except CvBridgeError as e:
-            self.get_logger().error(f'CvBridge Error during publishing: {e}')
+            self.get_logger().error(f'CvBridge Error during segmentation publishing: {e}')
+            return
+
+        # ------------------------------
+        # Combine Depth and Segmentation IDs
+        # ------------------------------
+        if self.latest_depth_image is None:
+            self.get_logger().warn("No depth image available yet; skipping combined depth publication.")
+            return
+
+        # Check if the segmentation result and the depth image have the same spatial dimensions.
+        seg_height, seg_width = combined_preds.shape
+        depth_height, depth_width = self.latest_depth_image.shape[:2]
+        if (seg_height, seg_width) != (depth_height, depth_width):
+            self.get_logger().info("Resizing segmentation id image to match depth image resolution.")
+            # Use nearest-neighbor to preserve label ids.
+            combined_preds_resized = cv2.resize(combined_preds.astype(np.float32),
+                                                (depth_width, depth_height),
+                                                interpolation=cv2.INTER_NEAREST)
+        else:
+            combined_preds_resized = combined_preds.astype(np.float32)
+
+        # Create a 2-channel image where:
+        # Channel 0: Depth data.
+        # Channel 1: Segmentation id data.
+        combined_depth_image = np.dstack((self.latest_depth_image, combined_preds_resized))
+        
+        try:
+            # Publish the combined depth image.
+            # We use "32FC2" encoding to indicate a 2-channel float image.
+            combined_depth_msg = self.bridge.cv2_to_imgmsg(combined_depth_image, encoding="32FC2")
+            self.combined_depth_publisher.publish(combined_depth_msg)
+            self.get_logger().info("Published combined depth + segmentation id image.")
+        except CvBridgeError as e:
+            self.get_logger().error(f'CvBridge Error during combined depth publishing: {e}')
+            return
 
 # -----------------------------------
 # Main Entry Point
 # -----------------------------------
 def main(args=None):
     """
-    Main function to initialize the ROS2 system, load configuration parameters,
-    create an instance of the SegmentationNode, and start processing.
+    The main function initializes the ROS2 system, loads configuration parameters,
+    creates an instance of the SegmentationNode, and spins to process messages until shutdown.
     """
     rclpy.init(args=args)
     config = load_config()
     node = SegmentationNode(config)
+    
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -291,8 +317,5 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-# -----------------------------------
-# Run the Node when Executed Directly
-# -----------------------------------
 if __name__ == '__main__':
     main()

@@ -5,10 +5,11 @@ point_cloud_processing:
   point_cloud_topic: "/camera/pointcloud"  
   # depth_scale: 0.01
   # depth_image_topic: "/camera/depth/image_raw"
-  # camera_parameters_topic: "/camera/CameraInfo"
+  # camera_parameters_topic: "/camera/camera_info"
   depth_scale: 1.0
   depth_image_topic: "/davis/left/depth_image_raw"
   camera_parameters_topic: "/davis/left/camera_info"  
-  # pose_topic: "/davis/left/pose"
+  semantic_image_topic: "/camera/segmentation"
   pose_topic: "/davis/rotated_pose"
+  
 

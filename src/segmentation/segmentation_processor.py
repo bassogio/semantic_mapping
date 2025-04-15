@@ -59,6 +59,7 @@ class SegmentationNode(Node):
         self.color_image_topic        = self.node_config['color_image_topic']
         self.frame_id                 = self.node_config['frame_id']
         self.labels                   = self.node_config['labels']
+        self.model                    = self.node_config['model']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
@@ -66,6 +67,7 @@ class SegmentationNode(Node):
         self.declare_parameter('segmentation_topic',      self.segmentation_topic)
         self.declare_parameter('color_image_topic',       self.color_image_topic)
         self.declare_parameter('frame_id',                self.frame_id)
+        self.declare_parameter('model',                   self.model)
 
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
@@ -73,6 +75,7 @@ class SegmentationNode(Node):
         self.segmentation_topic       = self.get_parameter('segmentation_topic').value
         self.color_image_topic        = self.get_parameter('color_image_topic').value
         self.frame_id                 = self.get_parameter('frame_id').value
+        self.model                    = self.get_parameter('model').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -82,10 +85,11 @@ class SegmentationNode(Node):
         self.get_logger().info(f"Using device: {self.device}")
 
         # Let user choose which segmentation model to use.
-        self.model_input = ''
-
+        # self.model_input = ''
+        self.model_input = self.model 
+        
         while True:
-            self.model_input = input("Please choose a model (clipseg/segformer): ").strip().lower()
+            # self.model_input = input("Please choose a model (clipseg/segformer): ").strip().lower()
 
             if self.model_input == 'clipseg':
                 self.get_logger().info("You chose the CLIPSeg model.")
@@ -185,6 +189,9 @@ class SegmentationNode(Node):
             self.get_logger().error(f'CvBridge Error: {e}')
             return
 
+        # Save original dimensions from the input image.
+        original_height, original_width = cv_image.shape[:2]
+
         # Convert the OpenCV BGR image to a PIL RGB image.
         pil_image = PILImage.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
 
@@ -205,7 +212,7 @@ class SegmentationNode(Node):
             preds = outputs.logits
             processed_preds = torch.sigmoid(preds)
             combined_preds = processed_preds.squeeze(0).argmax(dim=0).cpu().numpy()
-            
+
         elif self.model_input == 'segformer':
             inputs = self.feature_extractor(images=pil_image, return_tensors="pt")
             for key, value in inputs.items():
@@ -222,22 +229,21 @@ class SegmentationNode(Node):
         # Create a colored segmentation mask for visualization.
         colored_mask = np.zeros((combined_preds.shape[0], combined_preds.shape[1], 3), dtype=np.uint8)
         for label in self.labels:
-            # Note the change: use label['id'] instead of label('id')
             colored_mask[combined_preds == label['id']] = label['color']
 
-        # Log some stats about the segmentation for debugging.
-        unique_labels = np.unique(combined_preds)
-        # self.get_logger().info(f"Segmentation unique labels: {unique_labels}")
+        # Resize the segmentation mask to match the original image dimensions
+        # Use INTER_NEAREST to prevent interpolation artifacts in the segmentation labels.
+        colored_mask_resized = cv2.resize(colored_mask, (original_width, original_height), interpolation=cv2.INTER_NEAREST)
 
-        # Convert the segmentation mask into a ROS image message and publish.
+        # Convert the resized segmentation mask into a ROS image message and publish.
         try:
-            seg_msg = self.bridge.cv2_to_imgmsg(colored_mask, encoding="rgb8")
-            # Directly publish the image produced by CvBridge.
+            seg_msg = self.bridge.cv2_to_imgmsg(colored_mask_resized, encoding="rgb8")
             self.segmentation_publisher.publish(seg_msg)
-            self.get_logger().info("Published segmentation mask.")
+            self.get_logger().info("Published segmentation mask with original image dimensions.")
         except CvBridgeError as e:
             self.get_logger().error(f'CvBridge Error during publishing: {e}')
             return
+
 
 # -----------------------------------
 # Main Entry Point

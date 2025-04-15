@@ -1,14 +1,13 @@
 #segmentation_config
-segmentation_processing:
+semantic_mapping:
   frame_id: "map"
   segmentation_topic: "/camera/segmentation"
   # segmentated_rgb_topic: "/camera/segmentation/rgb"
   # segmentated_depth_topic: "/camera/segmentation/depth" 
-  # color_image_topic: "/camera/color/image_raw"
-  # depth_image_topic: "/camera/depth/image_raw"
-  color_image_topic: "/davis/left/image_raw"
-  depth_image_topic: "/camera/left/depth_image_raw"
-  model: "segformer" # Here you can choose between using segformer and clipseg
+  color_image_topic: "/camera/color/image_raw"
+  depth_image_topic: "/camera/depth/image_raw"
+  # color_image_topic: "/davis/left/image_raw"
+  # depth_image_topic: "/camera/left/depth_image_raw"
   labels: [
             {'name': 'road', 'id': 0, 'color': [128, 64, 128]},
             {'name': 'sidewalk', 'id': 1, 'color': [244, 35, 232]},
