@@ -1,32 +1,12 @@
 #segmentation_config
 semantic_mapping:
+  semantic_map_topic: "/semantic_map"  # Topic to publish the semantic map
+  occupancy_grid_topic: "/occupancy_grid"
+  point_cloud_topic: "/camera/pointcloud" # Topic to subscribe the point cloud
+  pose_topic: "/davis/rotated_pose" # Topic to subscribe to pose
   frame_id: "map"
-  segmentation_topic: "/camera/segmentation"
-  # segmentated_rgb_topic: "/camera/segmentation/rgb"
-  # segmentated_depth_topic: "/camera/segmentation/depth" 
-  color_image_topic: "/camera/color/image_raw"
-  depth_image_topic: "/camera/depth/image_raw"
-  # color_image_topic: "/davis/left/image_raw"
-  # depth_image_topic: "/camera/left/depth_image_raw"
-  labels: [
-            {'name': 'road', 'id': 0, 'color': [128, 64, 128]},
-            {'name': 'sidewalk', 'id': 1, 'color': [244, 35, 232]},
-            {'name': 'building', 'id': 2, 'color': [70, 70, 70]},
-            {'name': 'wall', 'id': 3, 'color': [102, 102, 156]},
-            {'name': 'fence', 'id': 4, 'color': [190, 153, 153]},
-            {'name': 'pole', 'id': 5, 'color': [153, 153, 153]},
-            {'name': 'traffic light', 'id': 6, 'color': [250, 170, 30]},
-            {'name': 'traffic sign', 'id': 7, 'color': [220, 220, 0]},
-            {'name': 'vegetation', 'id': 8, 'color': [107, 142, 35]},
-            {'name': 'terrain', 'id': 9, 'color': [152, 251, 152]},
-            {'name': 'sky', 'id': 10, 'color': [70, 130, 180]},
-            {'name': 'person', 'id': 11, 'color': [220, 20, 60]},
-            {'name': 'rider', 'id': 12, 'color': [255, 0, 0]},
-            {'name': 'car', 'id': 13, 'color': [0, 0, 142]},
-            {'name': 'truck', 'id': 14, 'color': [0, 0, 70]},
-            {'name': 'bus', 'id': 15, 'color': [0, 60, 100]},
-            {'name': 'train', 'id': 16, 'color': [0, 80, 100]},
-            {'name': 'motorcycle', 'id': 17, 'color': [0, 0, 230]},
-            {'name': 'bicycle', 'id': 18, 'color': [119, 11, 32]},
-            {'name': 'void', 'id': 29, 'color': [0, 0, 0]}  # Used for undefined areas
-          ]
+  grid_resolution: 0.1  # Grid cell size in meters
+  grid_size: 1000  # Number of cells in each dimension
+  grid_origin: [-50.0, -50.0]  # Origin of the grid in meters
+  max_distance: 30.0  # Maximum distance for depth clipping in meters - should be same as point cloud config
+  

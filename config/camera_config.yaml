@@ -1,6 +1,6 @@
 #camera_config
 camera_processing:
-  color_image_topic: "/camera/color/image_raw" 
-  depth_image_topic: "/camera/depth/image_raw"
-  camera_info_topic: "/camera/camera_info"
+  color_image_topic: "/camera/color/image_raw" # Topic to publish the rgb image
+  depth_image_topic: "/camera/depth/image_raw" # Topic to publish the depth image
+  camera_info_topic: "/camera/camera_info" # Topic to publish the camera info
   
