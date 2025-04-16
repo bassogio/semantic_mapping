@@ -1,11 +1,11 @@
 # rotate_pose_config.yaml
 rotate_pose_processing:
-  frame_id: "map" # Frame ID for the rotated pose
-  pose_topic: "/davis/left/pose" # Topic to subscribe to the pose
+  frame_id:           "map" # Frame ID for the rotated pose
+  pose_topic:         "/davis/left/pose" # Topic to subscribe to the pose
   rotated_pose_topic: "/davis/rotated_pose" # Topic to publish the rotated pose
-  marker_topic: "path_visualization_marker" # Topic to publish the marker
-  roll: 275.5    # rotation around x-axis (red axis) in degrees
-  pitch: 7.0   # rotation around y-axis (green axis) in degrees
-  yaw: 0.0     # rotation around z-axis (blue axis) in degrees
-  use_service: true # Whether to unable use of the service to clear the marker
-  service_name: "clear_marker" # Service name to clear the marker
+  marker_topic:       "path_visualization_marker" # Topic to publish the marker
+  roll:               275.5 # rotation around x-axis (red axis) in degrees
+  pitch:              7.0 # rotation around y-axis (green axis) in degrees
+  yaw:                0.0 # rotation around z-axis (blue axis) in degrees
+  use_service:        true # Whether to unable use of the service to clear the marker
+  service_name:       "clear_marker" # Service name to clear the marker

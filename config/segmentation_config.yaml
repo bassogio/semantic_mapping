@@ -1,12 +1,12 @@
 #segmentation_config
 segmentation_processing:
-  frame_id: "map" # Frame ID for the segmentation
-  segmentation_topic: "/camera/segmentation" # Topic to publish the segmentation
+  frame_id:            "map" # Frame ID for the segmentation
+  segmentation_topic:  "/camera/segmentation" # Topic to publish the segmentation
   # color_image_topic: "/camera/color/image_raw" # Topic to subscribe to rgb image
   # depth_image_topic: "/camera/depth/image_raw" # Topic to subscribe to depth image
-  color_image_topic: "/davis/left/image_raw" # Topic to subscribe to rgb image from bag
-  depth_image_topic: "/camera/left/depth_image_raw" # Topic to subscribe to depth image from bag
-  model: "segformer" # Here you can choose between using segformer and clipseg
+  color_image_topic:   "/davis/left/image_raw" # Topic to subscribe to rgb image from bag
+  depth_image_topic:   "/camera/left/depth_image_raw" # Topic to subscribe to depth image from bag
+  model:               "segformer" # Here you can choose between using segformer and clipseg
   labels: [
             {'name': 'road', 'id': 0, 'color': [128, 64, 128]},
             {'name': 'sidewalk', 'id': 1, 'color': [244, 35, 232]},

@@ -1,12 +1,12 @@
 #segmentation_config
 semantic_mapping:
-  semantic_map_topic: "/semantic_map"  # Topic to publish the semantic map
+  semantic_map_topic:   "/semantic_map"  # Topic to publish the semantic map
   occupancy_grid_topic: "/occupancy_grid"
-  point_cloud_topic: "/camera/pointcloud" # Topic to subscribe the point cloud
-  pose_topic: "/davis/rotated_pose" # Topic to subscribe to pose
-  frame_id: "map"
-  grid_resolution: 0.1  # Grid cell size in meters
-  grid_size: 1000  # Number of cells in each dimension
-  grid_origin: [-50.0, -50.0]  # Origin of the grid in meters
-  max_distance: 30.0  # Maximum distance for depth clipping in meters - should be same as point cloud config
+  point_cloud_topic:    "/camera/pointcloud" # Topic to subscribe the point cloud
+  pose_topic:           "/davis/rotated_pose" # Topic to subscribe to pose
+  frame_id:             "map"
+  grid_resolution:      0.1  # Grid cell size in meters
+  grid_size:            1000  # Number of cells in each dimension
+  grid_origin:          [-50.0, -50.0]  # Origin of the grid in meters
+  max_distance:         30.0  # Maximum distance for depth clipping in meters - should be same as point cloud config
   
