@@ -55,27 +55,27 @@ class SegmentationNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.segmentation_topic       = self.node_config['segmentation_topic']
-        self.color_image_topic        = self.node_config['color_image_topic']
-        self.frame_id                 = self.node_config['frame_id']
-        self.labels                   = self.node_config['labels']
-        self.model                    = self.node_config['model']
+        self.segmentation_topic = self.node_config['segmentation_topic']
+        self.color_image_topic  = self.node_config['color_image_topic']
+        self.frame_id           = self.node_config['frame_id']
+        self.labels             = self.node_config['labels']
+        self.model              = self.node_config['model']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('segmentation_topic',      self.segmentation_topic)
-        self.declare_parameter('color_image_topic',       self.color_image_topic)
-        self.declare_parameter('frame_id',                self.frame_id)
-        self.declare_parameter('model',                   self.model)
+        self.declare_parameter('segmentation_topic', self.segmentation_topic)
+        self.declare_parameter('color_image_topic',  self.color_image_topic)
+        self.declare_parameter('frame_id',           self.frame_id)
+        self.declare_parameter('model',              self.model)
 
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # -------------------------------------------
-        self.segmentation_topic       = self.get_parameter('segmentation_topic').value
-        self.color_image_topic        = self.get_parameter('color_image_topic').value
-        self.frame_id                 = self.get_parameter('frame_id').value
-        self.model                    = self.get_parameter('model').value
+        self.segmentation_topic = self.get_parameter('segmentation_topic').value
+        self.color_image_topic  = self.get_parameter('color_image_topic').value
+        self.frame_id           = self.get_parameter('frame_id').value
+        self.model              = self.get_parameter('model').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -243,7 +243,6 @@ class SegmentationNode(Node):
         except CvBridgeError as e:
             self.get_logger().error(f'CvBridge Error during publishing: {e}')
             return
-
 
 # -----------------------------------
 # Main Entry Point

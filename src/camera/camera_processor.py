@@ -55,21 +55,21 @@ class CameraNode(Node):
         # -------------------------------------------
         self.color_image_topic = self.node_config['color_image_topic']
         self.depth_image_topic = self.node_config['depth_image_topic']
-        self.camera_info_topic  = self.node_config['camera_info_topic']
+        self.camera_info_topic = self.node_config['camera_info_topic']
         
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
         self.declare_parameter('color_image_topic', self.color_image_topic)
         self.declare_parameter('depth_image_topic', self.depth_image_topic)
-        self.declare_parameter('camera_info_topic',  self.camera_info_topic)
+        self.declare_parameter('camera_info_topic', self.camera_info_topic)
         
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # -------------------------------------------
         self.color_image_topic = self.get_parameter('color_image_topic').value
         self.depth_image_topic = self.get_parameter('depth_image_topic').value
-        self.camera_info_topic  = self.get_parameter('camera_info_topic').value
+        self.camera_info_topic = self.get_parameter('camera_info_topic').value
         
         # -------------------------------------------
         # Setup RealSense pipeline.
@@ -89,9 +89,9 @@ class CameraNode(Node):
         # Create Publishers.
         # Use the topics specified in the configuration.
         # -------------------------------------------
-        self.color_image_publisher = self.create_publisher(Image,       self.color_image_topic, 10)
-        self.depth_image_publisher = self.create_publisher(Image,       self.depth_image_topic, 10)
-        self.camera_info_publisher = self.create_publisher(CameraInfo,  self.camera_info_topic,  10)
+        self.color_image_publisher = self.create_publisher(Image,      self.color_image_topic, 10)
+        self.depth_image_publisher = self.create_publisher(Image,      self.depth_image_topic, 10)
+        self.camera_info_publisher = self.create_publisher(CameraInfo, self.camera_info_topic, 10)
         
         # -------------------------------------------
         # Create a Timer to process and publish camera data at a fixed interval (e.g., 10 Hz).
@@ -147,7 +147,7 @@ class CameraNode(Node):
         # Retrieve parameters from the RealSense stream profile.
         video_profile = color_frame.profile.as_video_stream_profile()
         intrinsics  = video_profile.intrinsics
-        camera_info.width = intrinsics.width
+        camera_info.width  = intrinsics.width
         camera_info.height = intrinsics.height
         camera_info.k[0] = intrinsics.fx
         camera_info.k[4] = intrinsics.fy

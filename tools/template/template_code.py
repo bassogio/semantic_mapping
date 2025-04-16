@@ -86,8 +86,8 @@ class GeneralTaskNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.publisher_topic  = self.node_config['publisher_topic']
-        self.publisher_topic2 = self.node_config['publisher_topic2']
+        self.publisher_topic   = self.node_config['publisher_topic']
+        self.publisher_topic2  = self.node_config['publisher_topic2']
         self.subscriber_topic  = self.node_config['subscriber_topic']
         self.subscriber_topic2 = self.node_config['subscriber_topic2']
         self.frame_id          = self.node_config['frame_id']
@@ -97,18 +97,18 @@ class GeneralTaskNode(Node):
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('publisher_topic', self.publisher_topic)
-        self.declare_parameter('publisher_topic2', self.publisher_topic2)
-        self.declare_parameter('subscriber_topic', self.subscriber_topic)
+        self.declare_parameter('publisher_topic',   self.publisher_topic)
+        self.declare_parameter('publisher_topic2',  self.publisher_topic2)
+        self.declare_parameter('subscriber_topic',  self.subscriber_topic)
         self.declare_parameter('subscriber_topic2', self.subscriber_topic2)
-        self.declare_parameter('frame_id', self.frame_id)
+        self.declare_parameter('frame_id',          self.frame_id)
         
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # This allows any runtime overrides (e.g., via launch files) to update these defaults.
         # -------------------------------------------
-        self.publisher_topic  = self.get_parameter('publisher_topic').value
-        self.publisher_topic2 = self.get_parameter('publisher_topic2').value
+        self.publisher_topic   = self.get_parameter('publisher_topic').value
+        self.publisher_topic2  = self.get_parameter('publisher_topic2').value
         self.subscriber_topic  = self.get_parameter('subscriber_topic').value
         self.subscriber_topic2 = self.get_parameter('subscriber_topic2').value
         self.frame_id          = self.get_parameter('frame_id').value
@@ -132,7 +132,7 @@ class GeneralTaskNode(Node):
         self.publisher_ = self.create_publisher(PoseStamped, self.publisher_topic, 10)
         # Publisher 2 sends PoseStamped messages on the second publisher topic.
         self.publisher2_ = self.create_publisher(PoseStamped, self.publisher_topic2, 10)
-        
+
         # -------------------------------------------
         # Create Subscribers.
         # -------------------------------------------
@@ -143,6 +143,7 @@ class GeneralTaskNode(Node):
             self.listener_callback,     # Callback function.
             10                          # Queue size.
         )
+
         # Subscriber 2 listens for PoseStamped messages on the second subscriber topic.
         self.subscription2 = self.create_subscription(
             PoseStamped,                # Message type.
@@ -150,7 +151,7 @@ class GeneralTaskNode(Node):
             self.listener_callback2,    # Callback function.
             10                          # Queue size.
         )
-        
+
         # -------------------------------------------
         # Initialize flags to track if each subscriber has received a message.
         # -------------------------------------------
@@ -162,7 +163,7 @@ class GeneralTaskNode(Node):
         # This timer will stop checking once messages from both topics have been received.
         # -------------------------------------------
         self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
-        
+
         # -------------------------------------------
         # OPTIONAL: Create a Service Server.
         # Enable this block if you want your node to provide service functionality.
@@ -171,7 +172,7 @@ class GeneralTaskNode(Node):
         if self.use_service:
             self.service_server = self.create_service(Trigger, self.service_name, self.service_callback)
             self.get_logger().info(f"Service server started on '{self.service_name}'")
-    
+
     # -------------------------------------------
     # Timer Callback to Check if All Subscribed Topics Have Received at Least One Message
     # -------------------------------------------
@@ -192,7 +193,7 @@ class GeneralTaskNode(Node):
                 f"and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
-    
+
     # -------------------------------------------
     # Subscriber Callback Function for Topic 1
     # -------------------------------------------

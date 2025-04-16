@@ -46,9 +46,15 @@ class SemanticMapNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.map_topic            = self.node_config['map_topic']   
+        self.semantic_map_topic   = self.node_config['semantic_map_topic']   
+        self.occupancy_grid_topic = self.node_config['occupancy_grid_topic']
         self.point_cloud_topic    = self.node_config['point_cloud_topic']
+        self.pose_topic           = self.node_config['pose_topic']
         self.frame_id             = self.node_config['frame_id']
+        self.grid_resolution      = self.node_config['grid_resolution']
+        self.grid_size            = self.node_config['grid_size']
+        self.grid_origin          = self.node_config['grid_origin']
+        self.max_distance         = self.node_config['max_distance']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.

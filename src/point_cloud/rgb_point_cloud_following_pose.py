@@ -51,36 +51,36 @@ class PointCloudNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.point_cloud_topic        = self.task_config['point_cloud_topic']
-        self.camera_parameters_topic  = self.task_config['camera_parameters_topic']
-        self.depth_image_topic        = self.task_config['depth_image_topic']
-        self.pose_topic               = self.task_config['pose_topic']
-        self.semantic_image_topic     = self.task_config['semantic_image_topic']
-        self.max_distance             = self.task_config['max_distance']
-        self.depth_scale              = self.task_config['depth_scale']
-        self.frame_id                 = self.task_config['frame_id']
+        self.point_cloud_topic       = self.task_config['point_cloud_topic']
+        self.camera_parameters_topic = self.task_config['camera_parameters_topic']
+        self.depth_image_topic       = self.task_config['depth_image_topic']
+        self.pose_topic              = self.task_config['pose_topic']
+        self.semantic_image_topic    = self.task_config['semantic_image_topic']
+        self.max_distance            = self.task_config['max_distance']
+        self.depth_scale             = self.task_config['depth_scale']
+        self.frame_id                = self.task_config['frame_id']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('point_cloud_topic',         self.point_cloud_topic)
-        self.declare_parameter('camera_parameters_topic',   self.camera_parameters_topic)
-        self.declare_parameter('depth_image_topic',         self.depth_image_topic)
-        self.declare_parameter('pose_topic',                self.pose_topic)
-        self.declare_parameter('semantic_image_topic',      self.semantic_image_topic)
-        self.declare_parameter('max_distance',              self.max_distance)
-        self.declare_parameter('depth_scale',               self.depth_scale)
-        self.declare_parameter('frame_id',                  self.frame_id)
+        self.declare_parameter('point_cloud_topic',       self.point_cloud_topic)
+        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
+        self.declare_parameter('depth_image_topic',       self.depth_image_topic)
+        self.declare_parameter('pose_topic',              self.pose_topic)
+        self.declare_parameter('semantic_image_topic',    self.semantic_image_topic)
+        self.declare_parameter('max_distance',            self.max_distance)
+        self.declare_parameter('depth_scale',             self.depth_scale)
+        self.declare_parameter('frame_id',                self.frame_id)
 
         # Retrieve the (possibly updated) parameter values.
-        self.point_cloud_topic        = self.get_parameter('point_cloud_topic').value
-        self.camera_parameters_topic  = self.get_parameter('camera_parameters_topic').value
-        self.depth_image_topic        = self.get_parameter('depth_image_topic').value
-        self.pose_topic               = self.get_parameter('pose_topic').value
-        self.semantic_image_topic     = self.get_parameter('semantic_image_topic').value
-        self.max_distance             = self.get_parameter('max_distance').value
-        self.depth_scale              = self.get_parameter('depth_scale').value
-        self.frame_id                 = self.get_parameter('frame_id').value
+        self.point_cloud_topic       = self.get_parameter('point_cloud_topic').value
+        self.camera_parameters_topic = self.get_parameter('camera_parameters_topic').value
+        self.depth_image_topic       = self.get_parameter('depth_image_topic').value
+        self.pose_topic              = self.get_parameter('pose_topic').value
+        self.semantic_image_topic    = self.get_parameter('semantic_image_topic').value
+        self.max_distance            = self.get_parameter('max_distance').value
+        self.depth_scale             = self.get_parameter('depth_scale').value
+        self.frame_id                = self.get_parameter('frame_id').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -95,7 +95,7 @@ class PointCloudNode(Node):
         self.pose_z = 0.0
 
         # Placeholders for images.
-        self.depth_image = None
+        self.depth_image    = None
         self.semantic_image = None
 
         # Flags for tracking if at least one message has been received.

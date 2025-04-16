@@ -48,15 +48,15 @@ class RotatedPoseNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.rotated_pose_topic  = self.node_config['rotated_pose_topic']
-        self.pose_topic          = self.node_config['pose_topic']
-        self.marker_topic        = self.node_config['marker_topic']
-        self.roll                = self.node_config['roll']
-        self.pitch               = self.node_config['pitch']
-        self.yaw                 = self.node_config['yaw']
-        self.frame_id            = self.node_config['frame_id']
-        self.use_service         = self.node_config['use_service']
-        self.service_name        = self.node_config['service_name']
+        self.rotated_pose_topic = self.node_config['rotated_pose_topic']
+        self.pose_topic         = self.node_config['pose_topic']
+        self.marker_topic       = self.node_config['marker_topic']
+        self.roll               = self.node_config['roll']
+        self.pitch              = self.node_config['pitch']
+        self.yaw                = self.node_config['yaw']
+        self.frame_id           = self.node_config['frame_id']
+        self.use_service        = self.node_config['use_service']
+        self.service_name       = self.node_config['service_name']
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
@@ -75,15 +75,15 @@ class RotatedPoseNode(Node):
         # Retrieve final parameter values from the parameter server.
         # This allows any runtime overrides (e.g., via launch files) to update these defaults.
         # -------------------------------------------
-        self.rotated_pose_topic  = self.get_parameter('rotated_pose_topic').value
-        self.pose_topic          = self.get_parameter('pose_topic').value
-        self.marker_topic        = self.get_parameter('marker_topic').value
-        self.roll                = self.get_parameter('roll').value
-        self.pitch               = self.get_parameter('pitch').value
-        self.yaw                 = self.get_parameter('yaw').value
-        self.frame_id            = self.get_parameter('frame_id').value
-        self.use_service         = self.get_parameter('use_service').value
-        self.service_name        = self.get_parameter('service_name').value
+        self.rotated_pose_topic = self.get_parameter('rotated_pose_topic').value
+        self.pose_topic         = self.get_parameter('pose_topic').value
+        self.marker_topic       = self.get_parameter('marker_topic').value
+        self.roll               = self.get_parameter('roll').value
+        self.pitch              = self.get_parameter('pitch').value
+        self.yaw                = self.get_parameter('yaw').value
+        self.frame_id           = self.get_parameter('frame_id').value
+        self.use_service        = self.get_parameter('use_service').value
+        self.service_name       = self.get_parameter('service_name').value
 
         # -------------------------------------------
         # Initialize additional attributes needed for processing.
@@ -191,6 +191,7 @@ class RotatedPoseNode(Node):
             rotated_pose_msg.pose.position.x  = float(rotated_pos[0])
             rotated_pose_msg.pose.position.y  = float(rotated_pos[1])
             rotated_pose_msg.pose.position.z  = float(rotated_pos[2])
+
             # Convert rotated quaternion back to ROS order (x, y, z, w)
             rotated_pose_msg.pose.orientation.x = rotated_quat[1]
             rotated_pose_msg.pose.orientation.y = rotated_quat[2]
@@ -234,7 +235,7 @@ class RotatedPoseNode(Node):
         self.get_logger().info("Clearing markers and resetting path history...")
 
         # Publish a DELETE marker to remove the current path marker.
-        delete_marker            = Marker()
+        delete_marker                 = Marker()
         delete_marker.header.frame_id = self.frame_id
         delete_marker.header.stamp    = self.get_clock().now().to_msg()
         delete_marker.ns              = "rotate_pose_path"
