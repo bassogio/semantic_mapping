@@ -1,6 +1,11 @@
 update the README file
-occupancy_grid
-costmap
+Point cloud should be able to run even if there is no pose message or semantic image
+
+
+
+
+
+
 https://automaticaddison.com/building-a-map-of-the-environment-using-slam-ros-2-jazzy/
 https://drive.google.com/file/d/1Uk5YLMyoyMGMkE8FtJCNrZp_brGh5z3M/view
 

@@ -51,15 +51,9 @@ class IncrementalOccupancyGridNode(Node):
         self.frame_id              = self.node_config['frame_id']
         self.grid_resolution       = self.node_config['grid_resolution']
         self.grid_size             = self.node_config['grid_size']
+        self.grid_width            = self.node_config['grid_width']
+        self.grid_height           = self.node_config['grid_height']
         self.grid_origin           = list(map(float, self.node_config['grid_origin']))
-        
-        # Optional filtering limits: use helper function to parse values.
-        self.min_x = parse_optional_float(self.node_config.get('min_x'))
-        self.max_x = parse_optional_float(self.node_config.get('max_x'))
-        self.min_y = parse_optional_float(self.node_config.get('min_y'))
-        self.max_y = parse_optional_float(self.node_config.get('max_y'))
-        self.min_z = parse_optional_float(self.node_config.get('min_z'))
-        self.max_z = parse_optional_float(self.node_config.get('max_z'))
         
         # Declare parameters for runtime modification.
         self.declare_parameter('occupancy_grid_topic', self.occupancy_grid_topic)
@@ -67,6 +61,8 @@ class IncrementalOccupancyGridNode(Node):
         self.declare_parameter('frame_id', self.frame_id)
         self.declare_parameter('grid_resolution', self.grid_resolution)
         self.declare_parameter('grid_size', self.grid_size)
+        self.declare_parameter('grid_width', self.grid_width)
+        self.declare_parameter('grid_height', self.grid_height)
         self.declare_parameter('grid_origin', self.grid_origin)
         
         # Retrieve final values from the parameter server.
@@ -75,13 +71,15 @@ class IncrementalOccupancyGridNode(Node):
         self.frame_id              = self.get_parameter('frame_id').value
         self.grid_resolution       = self.get_parameter('grid_resolution').value
         self.grid_size             = self.get_parameter('grid_size').value
+        self.grid_width            = self.get_parameter('grid_width').value
+        self.grid_height           = self.get_parameter('grid_height').value
         self.grid_origin           = self.get_parameter('grid_origin').value
 
         # -------------------------------------------
         # Persistent Grid State: Initialize log-odds grid and known cell mask.
         # -------------------------------------------
-        self.grid_log_odds = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
-        self.known = np.zeros((self.grid_size, self.grid_size), dtype=bool)
+        self.grid_log_odds = np.zeros((self.grid_height, self.grid_width), dtype=np.float32)
+        self.known = np.zeros((self.grid_height, self.grid_width), dtype=bool)
 
         # Set the update increment for an occupied cell.
         self.L_occ = 0.7  # You can adjust this value as needed.
@@ -123,21 +121,7 @@ class IncrementalOccupancyGridNode(Node):
         all_points = np.array([
             [p[0], p[1], p[2]] for p in pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
         ])
-        
-        # Apply filtering based on the optional config limits.
-        if self.min_x is not None:
-            all_points = all_points[all_points[:,0] >= self.min_x]
-        if self.max_x is not None:
-            all_points = all_points[all_points[:,0] <= self.max_x]
-        if self.min_y is not None:
-            all_points = all_points[all_points[:,1] >= self.min_y]
-        if self.max_y is not None:
-            all_points = all_points[all_points[:,1] <= self.max_y]
-        if self.min_z is not None:
-            all_points = all_points[all_points[:,2] >= self.min_z]
-        if self.max_z is not None:
-            all_points = all_points[all_points[:,2] <= self.max_z]
-        
+
         # Use only the x and y coordinates for occupancy mapping.
         points = all_points[:, :2]
 
@@ -145,7 +129,7 @@ class IncrementalOccupancyGridNode(Node):
         for x, y in points:
             grid_x = int((x - self.grid_origin[0]) / self.grid_resolution)
             grid_y = int((y - self.grid_origin[1]) / self.grid_resolution)
-            if 0 <= grid_x < self.grid_size and 0 <= grid_y < self.grid_size:
+            if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
                 self.known[grid_y, grid_x] = True
                 self.grid_log_odds[grid_y, grid_x] += self.L_occ
 
@@ -157,7 +141,7 @@ class IncrementalOccupancyGridNode(Node):
         Convert the persistent log-odds grid to an occupancy grid message and publish it.
         Unknown cells remain marked as -1.
         """
-        occupancy = np.full((self.grid_size, self.grid_size), -1, dtype=np.int8)
+        occupancy = np.full((self.grid_height, self.grid_width), -1, dtype=np.int8)
         known_cells = self.known
         if np.any(known_cells):
             prob = 1.0 / (1.0 + np.exp(-self.grid_log_odds[known_cells]))
@@ -167,8 +151,8 @@ class IncrementalOccupancyGridNode(Node):
         occ_grid_msg.header.stamp = self.get_clock().now().to_msg()
         occ_grid_msg.header.frame_id = self.frame_id
         occ_grid_msg.info.resolution = self.grid_resolution
-        occ_grid_msg.info.width = self.grid_size
-        occ_grid_msg.info.height = self.grid_size
+        occ_grid_msg.info.width = self.grid_width
+        occ_grid_msg.info.height = self.grid_height
         occ_grid_msg.info.origin.position.x = self.grid_origin[0]
         occ_grid_msg.info.origin.position.y = self.grid_origin[1]
         occ_grid_msg.info.origin.position.z = 0.0

@@ -10,57 +10,56 @@ cleanup() {
     echo "Killing process with PID: $pid"
     kill "$pid" 2>/dev/null
   done
+  rm -f /tmp/segmentation_log
   exit 0
 }
 
-# Trap SIGINT (Ctrl+C) and SIGTERM to trigger cleanup
 trap cleanup SIGINT SIGTERM
 
-# Source the ROS 2 environment
+# Source ROS 2 environment
 source /opt/ros/humble/setup.bash
 
+# TEMP LOG FILE TO MONITOR SEGMENTATION STDOUT
+SEG_LOG=/tmp/segmentation_log
 
-# # Start additional Python nodes (they continue running)
-# python3 src/segmentation/segmentation_processor.py &
+# Start segmentation node, log to file and stdout
+echo "Starting segmentation_processor.py..."
+python3 src/segmentation/optimized/segmentation_processor.py 2>&1 | tee "$SEG_LOG" &
+SEG_PID=$!
+PIDS+=($SEG_PID)
+
+# Wait for the log line
+echo "Waiting for segmentation node to be ready..."
+while ! grep -q "Waiting for messages on topics: '/davis/left/image_raw'" "$SEG_LOG"; do
+  sleep 0.5
+done
+
+echo "Segmentation is ready. Starting the other ROS2 nodes..."
+
+# # Start other nodes now that segmentation is waiting for input
+python3 src/point_cloud/point_cloud_processor.py &
+PIDS+=($!)
+# python3 src/point_cloud/pose_following_point_cloud.py &
 # PIDS+=($!)
-# python3 src/point_cloud/point_cloud_processor.py &
-# PIDS+=($!)
-# python3 src/rotated_pose_message/rotated_pose_processor.py &
-# PIDS+=($!)
+
+python3 src/rotated_pose_message/rotated_pose_processor.py &
+PIDS+=($!)
+
 # python3 src/occupancy_grid/occupancy_grid_processor.py &
 # PIDS+=($!)
 
+# Continue with bag playback
+cd /workspace/bags
 
-# # Prompt the user to press Enter or Space to continue
-# echo "Press 'Enter' or 'Space' to continue..."
-# while true; do
-#   # -n1: read one character
-#   # -rs: silent mode (won't echo the character)
-#   read -n1 -rs key
-#   # Check if the pressed key is Space (" ") or Enter (newline, interpreted as an empty string)
-#   # if [ -z "$key" ] || [ "$key" = " " ]; then
-#   if [ "$key" = " " ]; then
-#     break
-#   fi
-# done
-
-# Continue with your commands:
-# Change to the data directory
-cd /workspace/data
-
-# Start RGB bag playback in the background
-ros2 bag play ros2_bag_data_dir --clock &
+ros2 bag play data_1 --clock &
 PIDS+=($!)
 
-# Wait a bit to align playback timing
 sleep 5.1
 
-# Start Depth bag playback in the background
-ros2 bag play ros2_bag_gt_dir --clock &
+ros2 bag play gt_1 --clock &
 PIDS+=($!)
 
-# Optionally, return to the project root if necessary
 cd ..
 
-# Wait for all background processes to finish
+# Wait for all background processes
 wait

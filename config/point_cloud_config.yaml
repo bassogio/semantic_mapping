@@ -11,6 +11,5 @@ point_cloud_processing:
   camera_parameters_topic:   "/davis/left/camera_info" # Topic to subscribe to camera_info from bag  
   semantic_image_topic:      "/camera/segmentation" # Topic to subscribe to semantic image
   pose_topic:                "/davis/rotated_pose" # Topic to subscribe to pose
-  voxel_visualization_topic: "/voxel_map"
 
 

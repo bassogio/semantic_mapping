@@ -61,7 +61,7 @@ class SemanticMapNode(Node):
         self.frame_id             = self.node_config['frame_id']
         self.grid_resolution      = self.node_config['grid_resolution']
         self.grid_size            = self.node_config['grid_size']
-        self.max_distance         = self.node_config['max_distance']
+        self.max_distance         = self.node_config['max_distance'] # I don't think I need it because Point cloud is already subscribing to it
         self.grid_origin          = list(map(float, self.node_config['grid_origin']))
 
         # -------------------------------------------

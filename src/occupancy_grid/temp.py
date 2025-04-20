@@ -1,175 +1,169 @@
-#!/usr/bin/env python3
-import os
-import yaml
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import OccupancyGrid
-from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
-from std_msgs.msg import ColorRGBA
-from cv_bridge import CvBridge, CvBridgeError
-import numpy as np
+
+from rse_map_models.grid_map import GridMap
+from rse_common_utils.sensor_utils import lidar_scan, log_odds
+from .occupancy_grid_mapping import OccupancyGridMapping
+
+import PyKDL
+
 import cv2
+import signal
 
-def load_config():
-    """
-    Loads the segmentation configuration file.
-    Adjust the relative path as needed.
-    """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file = os.path.join(script_dir, '../../config/segmentation_config.yaml')
-    if os.path.exists(config_file):
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    else:
-        raise FileNotFoundError(f"Config file not found at: {config_file}")
+import numpy as np
+import json
+import sys
 
-class OccupancyGridMapperNode(Node):
+class OccupancyGridMappingNode(Node):
     def __init__(self):
-        super().__init__('occupancy_grid_mapper')
-        
-        # Load configuration and extract segmentation labels.
-        config = load_config()
-        # Assuming the configuration file has a section called 'segmentation_processing'
-        # that contains a list of label dictionaries.
-        self.labels = config['segmentation_processing']['labels']
+        super().__init__('occupancy_grid_mapping')
 
-        # Subscriber to the combined depth + segmentation image.
-        # The image is expected to be encoded as "32FC2" (2-channel float image).
-        self.subscription = self.create_subscription(
-            Image,
-            '/camera/segmentation/depth',  # Change to the actual topic name.
-            self.combined_depth_callback,
-            10
-        )
-        
-        # Publishers for the occupancy grid and markers.
-        self.occ_grid_pub = self.create_publisher(OccupancyGrid, 'occupancy_grid', 10)
-        self.marker_pub = self.create_publisher(Marker, 'segmentation_markers', 10)
+        map_x_lim = [-10, 10]
+        map_y_lim = [-10, 10]
+        resolution = 0.1 # Grid resolution in [m]
+        p_prior = 0.5   # Prior occupancy probability
 
-        self.bridge = CvBridge()
+        self.grid_map = GridMap(map_x_lim, map_y_lim, resolution, log_odds(p_prior))
+        self.grid_mapping = OccupancyGridMapping()
 
-        # Parameters (can also be declared as ROS2 parameters):
-        self.declare_parameter('depth_threshold', 2.0)  # in meters
-        self.declare_parameter('grid_resolution', 0.05)   # meters per grid cell (e.g., 5cm)
-        self.declare_parameter('grid_frame', 'map')
+        self.scan_subscription = self.create_subscription(
+            LaserScan,
+            'scan',
+            self.laser_scan_callback,
+            10)
 
-        self.depth_threshold = self.get_parameter('depth_threshold').value
-        self.grid_resolution = self.get_parameter('grid_resolution').value
-        self.grid_frame = self.get_parameter('grid_frame').value
+        self.odometry_subscription = self.create_subscription(
+            Odometry,
+            'odom',
+            self.odometry_callback,
+            10)
 
-    def get_color_for_seg_id(self, seg_id: int) -> ColorRGBA:
+        self.map_publisher = self.create_publisher(OccupancyGrid, 'map', 10)
+
+        self.image_publisher = self.create_publisher(Image, 'map_image', 10)
+
+        map_update_timer_period = 0.5  # seconds
+        self.map_update_timer = self.create_timer(map_update_timer_period, self.map_update_callback)
+
+        self.scan = None
+        self.odom = None
+
+        # Register signal handler for graceful shutdown
+        signal.signal(signal.SIGINT, self.handle_shutdown)
+
+    def handle_shutdown(self, signum, frame):
         """
-        Extract the color from the loaded configuration based on the segmentation id.
-        The configuration color is assumed to be in a list of three integers [R,G,B] (0-255).
+        Handle Ctrl-C for graceful shutdown.
         """
-        default_color = [127, 127, 127]
-        selected_color = default_color
-        for label in self.labels:
-            if label['id'] == seg_id:
-                selected_color = label.get('color', default_color)
-                break
-        
-        # Convert 0-255 integers to floats between 0 and 1.
-        color = ColorRGBA()
-        color.r = selected_color[0] / 255.0
-        color.g = selected_color[1] / 255.0
-        color.b = selected_color[2] / 255.0
-        color.a = 1.0  # Fully opaque.
-        return color
+        self.get_logger().info('Shutting down...')
+        response = input("Do you want to save the map? (y/n): ").strip().lower()
+        if response == 'y':
+            filename = input("Enter the filename to save the map to (default: grid_map.json): ").strip()
+            if filename == "":
+                filename = "grid_map.json"
+            self.save_map_to_json(filename)
+        self.destroy_node()
+        sys.exit(0)
 
-    def combined_depth_callback(self, msg: Image):
-        """
-        Callback for the combined depth and segmentation image.
-        The expected input is a 2-channel image:
-           Channel 0: Depth (meters)
-           Channel 1: Segmentation id (stored as float; converted to int)
-        """
-        try:
-            # Convert ROS Image message to an OpenCV image (NumPy array)
-            np_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="32FC2")
-        except CvBridgeError as e:
-            self.get_logger().error(f'CvBridge error: {e}')
+    # Save the map to JSON
+    def save_map_to_json(self, filename="grid_map.json"):
+        map_data = {
+            "X_lim": self.grid_map.X_lim,
+            "Y_lim": self.grid_map.Y_lim,
+            "resolution": self.grid_map.resolution,
+            "log_odds": self.grid_map.l.tolist()
+        }
+        with open(filename, 'w') as file:
+            json.dump(map_data, file, indent=4)
+        print(f"Map saved to {filename}")
+
+    def laser_scan_callback(self, msg):
+        self.scan = msg
+
+    def odometry_callback(self, msg):
+        self.odom = msg
+
+    def map_update_callback(self):
+
+        if self.scan is None or self.odom is None:
             return
 
-        # Check that we have a 2-channel image.
-        if np_img.ndim != 3 or np_img.shape[2] != 2:
-            self.get_logger().error(f'Expected a 2-channel image, got shape {np_img.shape}')
+        z_t = lidar_scan(self.scan)
+        x_t = self.odom_to_x()
+
+        self.grid_mapping.update_grid_with_sensor_reading(self.grid_map, x_t, z_t)
+
+        occ_grid = self.grid_map.to_ros_occupancy_grid()
+        gs_image = self.grid_map.to_grayscale_image()
+
+        map_msg = OccupancyGrid()
+
+        map_msg.info.width = self.grid_map.x_len
+        map_msg.info.height = self.grid_map.y_len
+        map_msg.info.resolution = self.grid_map.resolution
+        map_msg.data = occ_grid 
+        self.map_publisher.publish(map_msg)
+        self.get_logger().info('Publishing map')
+
+        gs_image = self.plot_robot_pose(gs_image, x_t)
+        # Enlarge the image if smaller than 640x640
+        if gs_image.shape[0] < 640 or gs_image.shape[1] < 640:
+            gs_image = cv2.resize(gs_image, (640, 640), interpolation=cv2.INTER_NEAREST)
+        cv2.imshow("Map Image", gs_image)
+        cv2.waitKey(1)  
+
+    def odom_to_x(self):
+        return (self.odom.pose.pose.position.x, self.odom.pose.pose.position.y, self.quat_to_yaw(self.odom.pose.pose.orientation))
+
+    def quat_to_yaw(self, quat):
+        rot = PyKDL.Rotation.Quaternion(quat.x, quat.y, quat.z, quat.w)
+        return rot.GetRPY()[2]
+
+    def plot_robot_pose(self, grayscale_image, robot_pose):
+        x, y, theta = robot_pose
+
+        # Get the grayscale image of the map
+        grayscale_image = (grayscale_image * 255).astype(np.uint8)
+        grayscale_image = cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2BGR)
+
+        # Convert world coordinates to grid indices
+        x_grid, y_grid = self.grid_map.discretize(x, y)
+
+        # Ensure the indices are within bounds
+        if not self.grid_map.check_pixel(x_grid, y_grid):
+            print("Warning: Robot position is outside the map bounds.")
             return
 
-        height, width, _ = np_img.shape
-        depth_image = np_img[:, :, 0]  # Depth data (meters)
-        seg_id_image = np_img[:, :, 1].astype(np.int32)  # Segmentation ids
+        # Draw the robot position as a circle
+        cv2.circle(grayscale_image, (y_grid, x_grid), radius=1, color=(0, 0, 255), thickness=-1)
 
-        # Build the occupancy grid.
-        occ_grid = OccupancyGrid()
-        occ_grid.header.stamp = self.get_clock().now().to_msg()
-        occ_grid.header.frame_id = self.grid_frame
-        occ_grid.info.resolution = self.grid_resolution
-        occ_grid.info.width = width
-        occ_grid.info.height = height
-        occ_grid.info.origin.position.x = 0.0
-        occ_grid.info.origin.position.y = 0.0
-        occ_grid.info.origin.position.z = 0.0
-        occ_grid.info.origin.orientation.w = 1.0
+        # Draw a line to indicate the robot's orientation
+        arrow_length = 5  # Length of the orientation arrow in pixels
+        end_x = int(x_grid + arrow_length * np.cos(theta))
+        end_y = int(y_grid + arrow_length * np.sin(theta))
+        cv2.arrowedLine(grayscale_image, (y_grid, x_grid), (end_y, end_x), color=(255, 0, 0), thickness=1)
 
-        # Create occupancy grid data (occupied if depth is less than the threshold).
-        occ_data = np.zeros((height, width), dtype=np.int8)
-        occ_data[depth_image < self.depth_threshold] = 100  # Occupied
-        
-        occ_grid.data = occ_data.flatten().tolist()
-        self.occ_grid_pub.publish(occ_grid)
-        self.get_logger().info("Published occupancy grid.")
+        grayscale_image = cv2.flip(grayscale_image, -1)  # Flip the image vertically for display
 
-        # Create markers that show, for each occupied cell, a cube with the color from the segmentation.
-        marker = Marker()
-        marker.header.stamp = self.get_clock().now().to_msg()
-        marker.header.frame_id = self.grid_frame
-        marker.ns = "segmentation"
-        marker.id = 0
-        marker.type = Marker.CUBE_LIST
-        marker.action = Marker.ADD
-
-        # Cube (marker) size equal to grid resolution (height is arbitrary for visualization).
-        marker.scale.x = self.grid_resolution
-        marker.scale.y = self.grid_resolution
-        marker.scale.z = 0.05
-
-        marker.lifetime.sec = 0  # persistent marker
-
-        marker.points = []
-        marker.colors = []
-
-        # Iterate over every cell. For cells with depth below the threshold, add a marker cube.
-        for y in range(height):
-            for x in range(width):
-                if depth_image[y, x] < self.depth_threshold:
-                    pt = Point()
-                    # Place marker at center of grid cell.
-                    pt.x = (x + 0.5) * self.grid_resolution
-                    pt.y = (y + 0.5) * self.grid_resolution
-                    pt.z = 0.0  # Placed on z=0 plane.
-                    marker.points.append(pt)
-                    
-                    seg_id = seg_id_image[y, x]
-                    color = self.get_color_for_seg_id(seg_id)
-                    marker.colors.append(color)
-
-        self.marker_pub.publish(marker)
-        self.get_logger().info("Published segmentation marker cubes.")
+        return grayscale_image
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OccupancyGridMapperNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+
+    occupancy_grid_mapping_node = OccupancyGridMappingNode()
+
+    rclpy.spin(occupancy_grid_mapping_node)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    occupancy_grid_mapping_node.destroy_node()
+    rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

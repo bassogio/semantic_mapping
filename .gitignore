@@ -1,5 +1,6 @@
 data/ 
 garbage/
+bags/
 .vscode/
 __pycache__/
 *.pyc

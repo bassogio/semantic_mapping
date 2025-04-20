@@ -4,11 +4,9 @@ occupancy_grid_processing:
   point_cloud_topic:    "/camera/pointcloud"
   frame_id:             "map"
   grid_resolution:      0.1  # Grid cell size in meters
-  grid_size:            1000  # Number of cells in each dimension
-  grid_origin:          [-50.0, -50.0]  # Origin of the grid in meters
-  min_x: None
-  max_x: None
-  min_y: None
-  max_y: None
-  min_z: None
-  max_z: 1.5
+  grid_size:            3960  # Number of cells in each dimension
+  grid_width: 3959  # in cells
+  grid_height: 3168  # in cells
+  grid_origin: [-100.41, -256.62]  # in meters
+
+

@@ -1,0 +1,242 @@
+# -----------------------------------
+# Import Statements
+# -----------------------------------
+import os
+import yaml
+import numpy as np
+from cv_bridge import CvBridge
+from transforms3d.quaternions import quat2mat
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import PointCloud2, CameraInfo, Image
+from std_msgs.msg import Header
+import sensor_msgs_py.point_cloud2 as pc2
+
+# -----------------------------------
+# Configuration Loader Function
+# -----------------------------------
+def load_config():
+    """
+    Load configuration parameters from the configuration file.
+
+    Returns:
+        dict: A dictionary containing configuration data.
+    """
+    script_dir  = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, '../../config/point_cloud_config.yaml')
+
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    else:
+        raise FileNotFoundError(f"Config file not found at: {config_file}")
+
+# -----------------------------------
+# ROS2 Node Definition
+# -----------------------------------
+class PointCloudNode(Node):
+    def __init__(self, config):
+        # Initialize the node with a unique name.
+        super().__init__('point_cloud_node')
+
+        # -------------------------------------------
+        # Access the configuration section.
+        # -------------------------------------------
+        self.task_config = config['point_cloud_processing']
+
+        # -------------------------------------------
+        # Load configuration parameters.
+        # -------------------------------------------
+        self.point_cloud_topic       = self.task_config['point_cloud_topic']
+        self.camera_parameters_topic = self.task_config['camera_parameters_topic']
+        self.depth_image_topic       = self.task_config['depth_image_topic']
+        self.max_distance            = self.task_config['max_distance']
+        self.depth_scale             = self.task_config['depth_scale']
+        self.frame_id                = self.task_config['frame_id']
+
+        # -------------------------------------------
+        # Declare ROS2 parameters for runtime modification.
+        # -------------------------------------------
+        self.declare_parameter('point_cloud_topic',       self.point_cloud_topic)
+        self.declare_parameter('camera_parameters_topic', self.camera_parameters_topic)
+        self.declare_parameter('depth_image_topic',       self.depth_image_topic)
+        self.declare_parameter('max_distance',            self.max_distance)
+        self.declare_parameter('depth_scale',             self.depth_scale)
+        self.declare_parameter('frame_id',                self.frame_id)
+
+        # Retrieve the (possibly updated) parameter values.
+        self.point_cloud_topic       = self.get_parameter('point_cloud_topic').value
+        self.camera_parameters_topic = self.get_parameter('camera_parameters_topic').value
+        self.depth_image_topic       = self.get_parameter('depth_image_topic').value
+        self.max_distance            = self.get_parameter('max_distance').value
+        self.depth_scale             = self.get_parameter('depth_scale').value
+        self.frame_id                = self.get_parameter('frame_id').value
+
+        # -------------------------------------------
+        # Initialize CvBridge once for the node.
+        # -------------------------------------------
+        self.bridge = CvBridge()
+
+        # -------------------------------------------
+        # Create a Publisher.
+        # -------------------------------------------
+        self.point_cloud_publisher = self.create_publisher(PointCloud2, self.point_cloud_topic, 10)
+
+        # -------------------------------------------
+        # Create Subscribers.
+        # -------------------------------------------
+        self.camera_subscription = self.create_subscription(
+            CameraInfo,                      # Message type.
+            self.camera_parameters_topic,    # Topic name.
+            self.camera_callback,            # Callback function.
+            10                               # Queue size.
+        )
+
+        self.depth_image_subscription = self.create_subscription(
+            Image,                           # Message type.
+            self.depth_image_topic,          # Topic name.
+            self.point_cloud_callback,       # Callback function.
+            10                               # Queue size.
+        )
+
+        # -------------------------------------------
+        # Flags for tracking if at least one message has been received.
+        # -------------------------------------------
+        self.received_camera = False
+        self.received_depth  = False
+
+        # -------------------------------------------
+        # Create a Timer to check if subscribed topics have all received messages.
+        # This timer will only run until all topics have received one message.
+        # -------------------------------------------
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
+
+    # -------------------------------------------
+    # Timer Callback to Check Initial Subscriptions
+    # -------------------------------------------
+    def check_initial_subscriptions(self):
+        not_received = []
+        if not self.received_camera:
+            not_received.append(f"'{self.camera_parameters_topic}'")
+        if not self.received_depth:
+            not_received.append(f"'{self.depth_image_topic}'")
+
+        if not_received:
+            self.get_logger().info(f"Waiting for messages on topics: {', '.join(not_received)}")
+        else:
+            self.get_logger().info(
+                "All subscribed topics have received"
+                f" PointCloudNode started with publisher on '{self.point_cloud_topic}' and frame_id '{self.frame_id}'."
+            )
+            self.subscription_check_timer.cancel()
+
+    # -------------------------------------------
+    # Camera Callback Function
+    # -------------------------------------------
+    def camera_callback(self, msg):
+        # Update flag indicating the camera topic has been received.
+        if not self.received_camera:
+            self.received_camera = True
+
+        # Extract camera parameters.
+        self.fx = msg.k[0]
+        self.fy = msg.k[4]
+        self.cx = msg.k[2]
+        self.cy = msg.k[5]
+
+    # -------------------------------------------
+    # Point Cloud Callback Function
+    # -------------------------------------------
+    def point_cloud_callback(self, msg):
+        # Update flag indicating the depth image topic has been received.
+        if not self.received_depth:
+            self.received_depth = True
+
+        # Ensure camera parameters are initialized.
+        if not hasattr(self, 'fx') or not hasattr(self, 'fy') or not hasattr(self, 'cx') or not hasattr(self, 'cy'):
+            self.get_logger().warn("Camera parameters not initialized. Skipping point cloud processing.")
+            return
+
+        try:
+            # Convert the depth image to an OpenCV format.
+            depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+
+            # Validate depth image dimensions.
+            if len(depth_image.shape) != 2:
+                self.get_logger().error(f"Invalid depth image shape: {depth_image.shape}. Expected a 2D image.")
+                return
+
+            # Apply depth scaling (convert raw depth to meters).
+            depth = depth_image * self.depth_scale
+            rows, cols = depth.shape
+
+            # Create meshgrid for pixel indices.
+            u, v = np.meshgrid(np.arange(cols), np.arange(rows))
+            u = u.astype(np.float32)
+            v = v.astype(np.float32)
+
+            # Compute 3D coordinates using the pinhole camera model.
+            z = depth
+            x = z * (u - self.cx) / self.fx
+            y = z * (v - self.cy) / self.fy
+
+            # Filter out points beyond the maximum distance or invalid values.
+            valid = (z > 0) & (z < self.max_distance)
+            x = x[valid]
+            y = y[valid]
+            z = z[valid]
+
+            # Combine the valid 3D points into an (N, 3) numpy array.
+            points = np.stack((x, y, z), axis=-1)
+
+            # Convert the quaternion to a 3x3 rotation matrix.
+            # transforms3d expects quaternion order as (w, x, y, z).
+            quat = [1.0, 0.0, 0.0, 0.0] # Example quaternion (identity rotation).
+            rotation_matrix = quat2mat(quat)
+
+            # Apply the rotation from the quaternion to the point cloud.
+            points_rotated = points @ rotation_matrix.T
+
+            # Apply translation from the pose (after rotation).
+            translation = np.array([0.0, 0.0, 0.0])  # Example translation vector.
+            points_transformed = points_rotated + translation
+
+            # Create PointCloud2 message.
+            header = Header()
+            header.stamp    = self.get_clock().now().to_msg()
+            header.frame_id = self.frame_id
+            processed_msg   = pc2.create_cloud_xyz32(header, points_transformed)
+
+            self.point_cloud_publisher.publish(processed_msg)
+
+            # Log debug information.
+            self.get_logger().debug(f"Published rotated point cloud with {points_rotated.shape[0]} points.")
+        except Exception as e:
+            self.get_logger().error(f"Error processing point cloud: {e}")
+
+# -----------------------------------
+# Main Entry Point
+# -----------------------------------
+def main(args=None):
+    """
+    The main function initializes the ROS2 system, loads configuration parameters,
+    creates an instance of the PointCloudNode, and spins to process messages until shutdown.
+    """
+    rclpy.init(args=args)
+    config = load_config()
+    node   = PointCloudNode(config)
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass  # Allow graceful shutdown on CTRL+C.
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+# -----------------------------------
+# Run the node when the script is executed directly.
+# -----------------------------------
+if __name__ == '__main__':
+    main()
