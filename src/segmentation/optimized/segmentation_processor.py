@@ -167,7 +167,7 @@ class SegmentationNode(Node):
     def segformer_initialization(self):
         model_name = "nvidia/segformer-b1-finetuned-cityscapes-1024-1024"
         # model_name = "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
-        self.feature_extractor = SegformerFeatureExtractor.from_pretrained(model_name)
+        self.feature_extractor = SegformerFeatureExtractor.from_pretrained(model_name)  
         self.model = SegformerForSemanticSegmentation.from_pretrained(model_name)
         self.model.to(self.device)
         
