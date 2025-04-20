@@ -1,9 +1,3 @@
-"""
-ROS2 Node for Point Cloud Processing with Camera, Pose, and Depth Image Subscriptions.
-The node will wait until it receives at least one message from all subscribed topics,
-and then it will stop checking for missing topics.
-"""
-
 # -----------------------------------
 # Import Statements
 # -----------------------------------

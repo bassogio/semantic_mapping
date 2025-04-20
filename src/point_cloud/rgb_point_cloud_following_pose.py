@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -----------------------------------
 # Import Statements
 # -----------------------------------
@@ -118,31 +117,31 @@ class PointCloudNode(Node):
         # Create Subscribers.
         # -------------------------------------------
         self.camera_subscription = self.create_subscription(
-            CameraInfo,                      # Message type.
-            self.camera_parameters_topic,    # Topic name.
-            self.camera_callback,            # Callback function.
-            10                               # Queue size.
+            CameraInfo,                   # Message type.
+            self.camera_parameters_topic, # Topic name.
+            self.camera_callback,         # Callback function.
+            10                            # Queue size.
         )
 
         self.pose_subscription = self.create_subscription(
-            PoseStamped,                     # Message type.
-            self.pose_topic,                 # Topic name.
-            self.pose_callback,              # Callback function.
-            10                               # Queue size.
+            PoseStamped,        # Message type.
+            self.pose_topic,    # Topic name.
+            self.pose_callback, # Callback function.
+            10                  # Queue size.
         )
 
         self.depth_image_subscription = self.create_subscription(
-            Image,                           # Message type.
-            self.depth_image_topic,          # Topic name.
-            self.depth_callback,             # Callback function.
-            10                               # Queue size.
+            Image,                  # Message type.
+            self.depth_image_topic, # Topic name.
+            self.depth_callback,    # Callback function.
+            10                      # Queue size.
         )
 
         self.semantic_image_subscription = self.create_subscription(
-            Image,                           # Message type.
-            self.semantic_image_topic,       # Topic name.
-            self.semantic_callback,          # Callback function.
-            10                               # Queue size.
+            Image,                     # Message type.
+            self.semantic_image_topic, # Topic name.
+            self.semantic_callback,    # Callback function.
+            10                         # Queue size.
         )
 
         # -------------------------------------------
@@ -303,7 +302,7 @@ class PointCloudNode(Node):
             points_final = np.column_stack((points_transformed, points_with_color[:, 3]))
 
             # Build a PointCloud2 message with fields: x, y, z, and rgb.
-            header = Header()
+            header          = Header()
             header.stamp    = self.get_clock().now().to_msg()
             header.frame_id = self.frame_id
 

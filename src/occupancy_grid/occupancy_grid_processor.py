@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+# -----------------------------------
+# Import Statements
+# -----------------------------------
 import os
 import yaml
 import numpy as np
@@ -43,6 +45,7 @@ class IncrementalOccupancyGridNode(Node):
         # Load configuration parameters.
         # -------------------------------------------
         self.node_config = config['occupancy_grid_processing']
+
         self.occupancy_grid_topic  = self.node_config['occupancy_grid_topic']
         self.point_cloud_topic     = self.node_config['point_cloud_topic']
         self.frame_id              = self.node_config['frame_id']

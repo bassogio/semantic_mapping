@@ -1,10 +1,3 @@
-"""
-Generic ROS2 Node Template for a Camera Node
-
-This node loads configuration parameters, sets up a RealSense camera pipeline,
-and publishes color and depth image messages (as well as camera info) continuously.
-"""
-
 # -----------------------------------
 # Import Statements
 # -----------------------------------
