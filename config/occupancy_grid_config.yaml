@@ -3,10 +3,13 @@ occupancy_grid_processing:
   occupancy_grid_topic: "/occupancy_grid"
   point_cloud_topic:    "/camera/pointcloud"
   frame_id:             "map"
+  prior_prob:           0.5 # Prior probability of occupancy
+  occupied_prob:        0.9 # Probability of occupancy given an occupied cell
+  free_prob:            0.1 # Probability of occupancy given a free cell
   grid_resolution:      0.1  # Grid cell size in meters
   grid_size:            3960  # Number of cells in each dimension
-  grid_width: 3959  # in cells
-  grid_height: 3168  # in cells
-  grid_origin: [-100.41, -256.62]  # in meters
+  grid_width:           3959  # in cells
+  grid_height:          3168  # in cells
+  grid_origin:          [-100.41, -256.62]  # in meters
 
 

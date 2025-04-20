@@ -36,16 +36,16 @@ done
 
 echo "Segmentation is ready. Starting the other ROS2 nodes..."
 
-# # Start other nodes now that segmentation is waiting for input
-python3 src/point_cloud/point_cloud_processor.py &
-PIDS+=($!)
-# python3 src/point_cloud/pose_following_point_cloud.py &
+# # # Start other nodes now that segmentation is waiting for input
+# python3 src/point_cloud/point_cloud_processor.py &
+# PIDS+=($!)
+# # python3 src/point_cloud/pose_following_point_cloud.py &
+# # PIDS+=($!)
+
+# python3 src/rotated_pose_message/rotated_pose_processor.py &
 # PIDS+=($!)
 
-python3 src/rotated_pose_message/rotated_pose_processor.py &
-PIDS+=($!)
-
-# python3 src/occupancy_grid/occupancy_grid_processor.py &
+# python3 src/mapping/semantic_mapping.py &
 # PIDS+=($!)
 
 # Continue with bag playback

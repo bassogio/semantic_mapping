@@ -1,13 +1,14 @@
 #segmentation_config
 semantic_mapping:
   semantic_map_topic:   "/semantic_map"  # Topic to publish the semantic map
-  occupancy_grid_topic: "/occupancy_grid"
+  occupancy_grid_topic: "/occupancy_grid" # Topic to publish the occupancy grid
   point_cloud_topic:    "/camera/pointcloud" # Topic to subscribe the point cloud
-  pose_topic:           "/davis/rotated_pose" # Topic to subscribe to pose
   frame_id:             "map" # Frame ID for the map
-  max_distance:         30.0  # Maximum distance for depth clipping in meters - should be same as point cloud config
+  prior_prob:           0.5 # Prior probability of occupancy
+  occupied_prob:        0.9 # Probability of occupancy given an occupied cell
+  free_prob:            0.1 # Probability of occupancy given a free cell
   # You can run "get_pose_bounds.py" to get the size and grid origin
   grid_resolution:      0.1  # Grid cell size in meters
-  grid_size:            3960  # Number of cells in each dimension
-  grid_origin:          [-100.41, -256.62]  # Origin of the grid in meters
-  
+  grid_width:           3959  # in cells
+  grid_height:          3168  # in cells
+  grid_origin:          [-100.41, -256.62]  # in meters

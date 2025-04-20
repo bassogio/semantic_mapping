@@ -1,169 +1,211 @@
+# -----------------------------------
+# Import Statements
+# -----------------------------------
+import os
+import yaml
+import numpy as np
 import rclpy
 from rclpy.node import Node
-
-from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan, Image
+from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import OccupancyGrid
+import sensor_msgs_py.point_cloud2 as pc2
 
-from rse_map_models.grid_map import GridMap
-from rse_common_utils.sensor_utils import lidar_scan, log_odds
-from .occupancy_grid_mapping import OccupancyGridMapping
+def load_config():
+    """
+    Load configuration parameters.
+    Returns:
+        dict: A dictionary containing configuration data.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, '../../config/occupancy_grid_config.yaml')
+    
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    else:
+        raise FileNotFoundError(f"Config file not found at: {config_file}")
 
-import PyKDL
+class OccupancyGridNode(Node):
+    def __init__(self, config):
+        super().__init__('occupancy_grid_node')
+        
+        # -------------------------------------------
+        # Load configuration parameters.
+        # -------------------------------------------
+        self.node_config = config['occupancy_grid_processing']
 
-import cv2
-import signal
+        self.occupancy_grid_topic = self.node_config['occupancy_grid_topic']
+        self.point_cloud_topic    = self.node_config['point_cloud_topic']
+        self.frame_id             = self.node_config['frame_id']
+        self.prior_prob           = self.node_config['prior_prob']   
+        self.occupied_prob        = self.node_config['occupied_prob']   
+        self.free_prob            = self.node_config['free_prob']   
+        self.grid_resolution      = self.node_config['grid_resolution']
+        self.grid_size            = self.node_config['grid_size']
+        self.grid_width           = self.node_config['grid_width']
+        self.grid_height          = self.node_config['grid_height']
+        self.grid_origin          = list(map(float, self.node_config['grid_origin']))
+        
+        # Declare parameters for runtime modification.
+        self.declare_parameter('occupancy_grid_topic', self.occupancy_grid_topic)
+        self.declare_parameter('point_cloud_topic',    self.point_cloud_topic)
+        self.declare_parameter('frame_id',             self.frame_id)
+        self.declare_parameter('prior_prob',           self.prior_prob)
+        self.declare_parameter('occupied_prob',        self.occupied_prob)
+        self.declare_parameter('free_prob',            self.free_prob)
+        self.declare_parameter('grid_resolution',      self.grid_resolution)
+        self.declare_parameter('grid_size',            self.grid_size)
+        self.declare_parameter('grid_width',           self.grid_width)
+        self.declare_parameter('grid_height',          self.grid_height)
+        self.declare_parameter('grid_origin',          self.grid_origin)
+        
+        # Retrieve final values from the parameter server.
+        self.occupancy_grid_topic = self.get_parameter('occupancy_grid_topic').value
+        self.point_cloud_topic    = self.get_parameter('point_cloud_topic').value
+        self.frame_id             = self.get_parameter('frame_id').value
+        self.prior_prob           = self.get_parameter('prior_prob').value
+        self.occupied_prob        = self.get_parameter('occupied_prob').value
+        self.free_prob            = self.get_parameter('free_prob').value
+        self.grid_resolution      = self.get_parameter('grid_resolution').value
+        self.grid_size            = self.get_parameter('grid_size').value
+        self.grid_width           = self.get_parameter('grid_width').value
+        self.grid_height          = self.get_parameter('grid_height').value
+        self.grid_origin          = self.get_parameter('grid_origin').value
 
-import numpy as np
-import json
-import sys
 
-class OccupancyGridMappingNode(Node):
-    def __init__(self):
-        super().__init__('occupancy_grid_mapping')
 
-        map_x_lim = [-10, 10]
-        map_y_lim = [-10, 10]
-        resolution = 0.1 # Grid resolution in [m]
-        p_prior = 0.5   # Prior occupancy probability
+        
 
-        self.grid_map = GridMap(map_x_lim, map_y_lim, resolution, log_odds(p_prior))
-        self.grid_mapping = OccupancyGridMapping()
+        # -------------------------------------------
+        # Persistent Grid State: Initialize log-odds grid and known cell mask.
+        # -------------------------------------------
+        self.map  = self.generate_map(self)
+        # self.grid_log_odds = np.zeros((self.grid_height, self.grid_width), dtype=np.float32)
+        # self.known = np.zeros((self.grid_height, self.grid_width), dtype=bool)
 
-        self.scan_subscription = self.create_subscription(
-            LaserScan,
-            'scan',
-            self.laser_scan_callback,
-            10)
+        # Set the update increment for an occupied cell.
+        self.l_occ = 0.7  # You can adjust this value as needed.
+        
+        # -------------------------------------------
+        # Create Publishers and Subscribers.
+        # -------------------------------------------
+        self.occupancy_grid_publisher = self.create_publisher(OccupancyGrid, self.occupancy_grid_topic, 10)
+        self.point_cloud_subscription = self.create_subscription(
+            PointCloud2,                # Message type.
+            self.point_cloud_topic,      # Topic name.
+            self.point_cloud_callback,   # Callback function.
+            10                          # Queue size.
+        )
+        
+        self.received_point_cloud = False
+        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
+    
+    def check_initial_subscriptions(self):
+        waiting_topics = []
+        if not self.received_point_cloud:
+            waiting_topics.append(f"'{self.point_cloud_topic}'")
+            
+        if waiting_topics:
+            self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
+        else:
+            self.get_logger().info(
+                f"All subscribed topics have received at least one message. "
+                f"IncrementalOccupancyGridNode running with publisher on '{self.occupancy_grid_topic}', "
+                f"subscriber on '{self.point_cloud_topic}', frame '{self.frame_id}'."
+            )
+            self.subscription_check_timer.cancel()
 
-        self.odometry_subscription = self.create_subscription(
-            Odometry,
-            'odom',
-            self.odometry_callback,
-            10)
-
-        self.map_publisher = self.create_publisher(OccupancyGrid, 'map', 10)
-
-        self.image_publisher = self.create_publisher(Image, 'map_image', 10)
-
-        map_update_timer_period = 0.5  # seconds
-        self.map_update_timer = self.create_timer(map_update_timer_period, self.map_update_callback)
-
-        self.scan = None
-        self.odom = None
-
-        # Register signal handler for graceful shutdown
-        signal.signal(signal.SIGINT, self.handle_shutdown)
-
-    def handle_shutdown(self, signum, frame):
+    def generate_map(self):
         """
-        Handle Ctrl-C for graceful shutdown.
+        Initialize map.
         """
-        self.get_logger().info('Shutting down...')
-        response = input("Do you want to save the map? (y/n): ").strip().lower()
-        if response == 'y':
-            filename = input("Enter the filename to save the map to (default: grid_map.json): ").strip()
-            if filename == "":
-                filename = "grid_map.json"
-            self.save_map_to_json(filename)
-        self.destroy_node()
-        sys.exit(0)
+        self.get_logger().info(f"Generating map of size: {(self.grid_height, self.grid_width)}")
+        map = self.prob_to_log_odds(self.prior_prob ) * np.ones((self.grid_height, self.grid_width))
+        return map
 
-    # Save the map to JSON
-    def save_map_to_json(self, filename="grid_map.json"):
-        map_data = {
-            "X_lim": self.grid_map.X_lim,
-            "Y_lim": self.grid_map.Y_lim,
-            "resolution": self.grid_map.resolution,
-            "log_odds": self.grid_map.l.tolist()
-        }
-        with open(filename, 'w') as file:
-            json.dump(map_data, file, indent=4)
-        print(f"Map saved to {filename}")
+    def prob_to_log_odds(p):
+        """
+        Log odds ratio of p(x):
 
-    def laser_scan_callback(self, msg):
-        self.scan = msg
+                     p(x)
+        l(x) = log ----------
+                    1 - p(x)
 
-    def odometry_callback(self, msg):
-        self.odom = msg
+        """
+        return np.log(p / (1 - p))
+    
+    def log_odds_to_prob(l):
+        """
+        Probability of p(x) from log odds ratio l(x):
 
-    def map_update_callback(self):
+                     1
+        p(x) = 1 - ---------------
+                    1 + e(l(x))
 
-        if self.scan is None or self.odom is None:
-            return
+        """
+        return 1 - (1 / (1 + np.exp(l)))
+    
+    def point_cloud_callback(self, msg):
+        if not self.received_point_cloud:
+            self.received_point_cloud = True
 
-        z_t = lidar_scan(self.scan)
-        x_t = self.odom_to_x()
+        # Read all x, y, z points from the PointCloud2 message.
+        all_points = np.array([
+            [p[0], p[1], p[2]] for p in pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
+        ])
 
-        self.grid_mapping.update_grid_with_sensor_reading(self.grid_map, x_t, z_t)
+        # Use only the x and y coordinates for occupancy mapping.
+        points = all_points[:, :2]
 
-        occ_grid = self.grid_map.to_ros_occupancy_grid()
-        gs_image = self.grid_map.to_grayscale_image()
+        # Update the persistent occupancy grid for each point.
+        for x, y in points:
+            grid_x = int((x - self.grid_origin[0]) / self.grid_resolution)
+            grid_y = int((y - self.grid_origin[1]) / self.grid_resolution)
+            if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
+                self.known[grid_y, grid_x] = True
+                self.grid_log_odds[grid_y, grid_x] += self.l_occ
 
-        map_msg = OccupancyGrid()
+        # Publish the updated occupancy grid.
+        self.publish_occupancy_grid()
 
-        map_msg.info.width = self.grid_map.x_len
-        map_msg.info.height = self.grid_map.y_len
-        map_msg.info.resolution = self.grid_map.resolution
-        map_msg.data = occ_grid 
-        self.map_publisher.publish(map_msg)
-        self.get_logger().info('Publishing map')
-
-        gs_image = self.plot_robot_pose(gs_image, x_t)
-        # Enlarge the image if smaller than 640x640
-        if gs_image.shape[0] < 640 or gs_image.shape[1] < 640:
-            gs_image = cv2.resize(gs_image, (640, 640), interpolation=cv2.INTER_NEAREST)
-        cv2.imshow("Map Image", gs_image)
-        cv2.waitKey(1)  
-
-    def odom_to_x(self):
-        return (self.odom.pose.pose.position.x, self.odom.pose.pose.position.y, self.quat_to_yaw(self.odom.pose.pose.orientation))
-
-    def quat_to_yaw(self, quat):
-        rot = PyKDL.Rotation.Quaternion(quat.x, quat.y, quat.z, quat.w)
-        return rot.GetRPY()[2]
-
-    def plot_robot_pose(self, grayscale_image, robot_pose):
-        x, y, theta = robot_pose
-
-        # Get the grayscale image of the map
-        grayscale_image = (grayscale_image * 255).astype(np.uint8)
-        grayscale_image = cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2BGR)
-
-        # Convert world coordinates to grid indices
-        x_grid, y_grid = self.grid_map.discretize(x, y)
-
-        # Ensure the indices are within bounds
-        if not self.grid_map.check_pixel(x_grid, y_grid):
-            print("Warning: Robot position is outside the map bounds.")
-            return
-
-        # Draw the robot position as a circle
-        cv2.circle(grayscale_image, (y_grid, x_grid), radius=1, color=(0, 0, 255), thickness=-1)
-
-        # Draw a line to indicate the robot's orientation
-        arrow_length = 5  # Length of the orientation arrow in pixels
-        end_x = int(x_grid + arrow_length * np.cos(theta))
-        end_y = int(y_grid + arrow_length * np.sin(theta))
-        cv2.arrowedLine(grayscale_image, (y_grid, x_grid), (end_y, end_x), color=(255, 0, 0), thickness=1)
-
-        grayscale_image = cv2.flip(grayscale_image, -1)  # Flip the image vertically for display
-
-        return grayscale_image
+    def publish_occupancy_grid(self):
+        """
+        Convert the persistent log-odds grid to an occupancy grid message and publish it.
+        Unknown cells remain marked as -1.
+        """
+        occupancy = np.full((self.grid_height, self.grid_width), -1, dtype=np.int8)
+        known_cells = self.known
+        if np.any(known_cells):
+            prob = 1.0 / (1.0 + np.exp(-self.grid_log_odds[known_cells]))
+            occupancy[known_cells] = np.round(prob * 100).astype(np.int8)
+        
+        occ_grid_msg = OccupancyGrid()
+        occ_grid_msg.header.stamp = self.get_clock().now().to_msg()
+        occ_grid_msg.header.frame_id = self.frame_id
+        occ_grid_msg.info.resolution = self.grid_resolution
+        occ_grid_msg.info.width = self.grid_width
+        occ_grid_msg.info.height = self.grid_height
+        occ_grid_msg.info.origin.position.x = self.grid_origin[0]
+        occ_grid_msg.info.origin.position.y = self.grid_origin[1]
+        occ_grid_msg.info.origin.position.z = 0.0
+        occ_grid_msg.data = occupancy.flatten().tolist()
+        
+        self.occupancy_grid_publisher.publish(occ_grid_msg)
+        self.get_logger().info("Published updated occupancy grid.")
 
 def main(args=None):
     rclpy.init(args=args)
-
-    occupancy_grid_mapping_node = OccupancyGridMappingNode()
-
-    rclpy.spin(occupancy_grid_mapping_node)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    occupancy_grid_mapping_node.destroy_node()
-    rclpy.shutdown()
-
+    config = load_config()
+    node = OccupancyGridNode(config)
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass  # Allow graceful shutdown on CTRL+C.
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

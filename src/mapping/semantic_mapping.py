@@ -57,11 +57,13 @@ class SemanticMapNode(Node):
         self.semantic_map_topic   = self.node_config['semantic_map_topic']   
         self.occupancy_grid_topic = self.node_config['occupancy_grid_topic']
         self.point_cloud_topic    = self.node_config['point_cloud_topic']
-        self.pose_topic           = self.node_config['pose_topic'] # I don't think I need it because Point cloud is already subscribing to it
         self.frame_id             = self.node_config['frame_id']
+        self.prior_prob           = self.node_config['prior_prob']
+        self.occupied_prob        = self.node_config['occupied_prob']
+        self.free_prob            = self.node_config['free_prob']
         self.grid_resolution      = self.node_config['grid_resolution']
-        self.grid_size            = self.node_config['grid_size']
-        self.max_distance         = self.node_config['max_distance'] # I don't think I need it because Point cloud is already subscribing to it
+        self.grid_width           = self.node_config['grid_width']
+        self.grid_height          = self.node_config['grid_height']
         self.grid_origin          = list(map(float, self.node_config['grid_origin']))
 
         # -------------------------------------------
@@ -70,11 +72,13 @@ class SemanticMapNode(Node):
         self.declare_parameter('semantic_map_topic',   self.semantic_map_topic)
         self.declare_parameter('occupancy_grid_topic', self.occupancy_grid_topic)
         self.declare_parameter('point_cloud_topic',    self.point_cloud_topic)
-        self.declare_parameter('pose_topic',           self.pose_topic)
         self.declare_parameter('frame_id',             self.frame_id)
+        self.declare_parameter('prior_prob',           self.prior_prob)
+        self.declare_parameter('occupied_prob',        self.occupied_prob)
+        self.declare_parameter('free_prob',            self.free_prob)
         self.declare_parameter('grid_resolution',      self.grid_resolution)
-        self.declare_parameter('grid_size',            self.grid_size)
-        self.declare_parameter('max_distance',         self.max_distance)
+        self.declare_parameter('grid_width',           self.grid_width)
+        self.declare_parameter('grid_height',          self.grid_height)
         self.declare_parameter('grid_origin',          self.grid_origin)
 
         # -------------------------------------------
@@ -84,21 +88,19 @@ class SemanticMapNode(Node):
         self.semantic_map_topic   = self.get_parameter('semantic_map_topic').value
         self.occupancy_grid_topic = self.get_parameter('occupancy_grid_topic').value
         self.point_cloud_topic    = self.get_parameter('point_cloud_topic').value
-        self.pose_topic           = self.get_parameter('pose_topic').value
         self.frame_id             = self.get_parameter('frame_id').value
+        self.prior_prob           = self.get_parameter('prior_prob').value
+        self.occupied_prob        = self.get_parameter('occupied_prob').value
+        self.free_prob            = self.get_parameter('free_prob').value
         self.grid_resolution      = self.get_parameter('grid_resolution').value
-        self.grid_size            = self.get_parameter('grid_size').value
-        self.max_distance         = self.get_parameter('max_distance').value
+        self.grid_width           = self.get_parameter('grid_width').value
+        self.grid_height          = self.get_parameter('grid_height').value
         self.grid_origin          = self.get_parameter('grid_origin').value
-
+        
         # -------------------------------------------
-        # Initialize log-odds grid and known cell mask.
+        # Initialize CvBridge.
         # -------------------------------------------
-        self.grid_log_odds = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
-        self.known = np.zeros((self.grid_size, self.grid_size), dtype=bool)
-
-        # Set the update increment for an occupied cell.
-        self.L_occ = 0.7  # You can adjust this value as needed.
+        self.bridge = CvBridge()
 
         # -------------------------------------------
         # Create Publishers.
@@ -109,13 +111,6 @@ class SemanticMapNode(Node):
         # -------------------------------------------
         # Create Subscribers.
         # -------------------------------------------
-        self.pose_subscription = self.create_subscription(
-            PoseStamped,         # Message type.
-            self.pose_topic,     # Topic name.
-            self.pose_callback,  # Callback function.
-            10                   # Queue size.
-        )
-
         self.point_cloud_subscription = self.create_subscription(
             PointCloud2,               # Message type.
             self.point_cloud_topic,    # Topic name.
@@ -126,7 +121,6 @@ class SemanticMapNode(Node):
         # -------------------------------------------
         # Initialize flags to track if each subscriber has received a message.
         # -------------------------------------------
-        self.received_pose = False
         self.received_point_cloud = False
 
         # -------------------------------------------
@@ -140,8 +134,6 @@ class SemanticMapNode(Node):
     # -------------------------------------------
     def check_initial_subscriptions(self):
         waiting_topics = []
-        if not self.received_pose:
-            waiting_topics.append(f"'{self.pose_topic}'")
         if not self.received_point_cloud:
             waiting_topics.append(f"'{self.point_cloud_topic}'")
             
@@ -151,26 +143,11 @@ class SemanticMapNode(Node):
             self.get_logger().info(
                 "All subscribed topics have received at least one message."
                 f"SemanticMapNode started with publishers on '{self.semantic_map_topic}' and '{self.occupancy_grid_topic}', "
-                f"subscribers on '{self.point_cloud_topic}' and '{self.pose_topic}', "
+                f"subscribers on '{self.point_cloud_topic}', "
                 f"and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
     
-    # -------------------------------------------
-    # Pose Callback Function
-    # -------------------------------------------
-    def pose_callback(self, msg):
-        if not self.received_pose:
-            self.received_pose = True
-        # Update quaternion and translation from pose message.
-        self.Qx = msg.pose.orientation.x
-        self.Qy = msg.pose.orientation.y
-        self.Qz = msg.pose.orientation.z
-        self.Qw = msg.pose.orientation.w
-        self.pose_x = msg.pose.position.x
-        self.pose_y = msg.pose.position.y
-        self.pose_z = msg.pose.position.z
-
     # -------------------------------------------
     # Point cloud Callback Function
     # -------------------------------------------
@@ -198,77 +175,79 @@ class SemanticMapNode(Node):
     # Maps Publishing Function
     # -------------------------------------------
     def publish_maps(self):
-        # Group points into grid cells.
+        # Group points into 2D grid cells.
         grid = {}
         for pt in self.all_points:
             x, y, z, r, g, b = pt
-            # Compute grid cell index.
+            # Calculate grid cell index by quantizing x and y using resolution
             grid_x = int(np.floor(x / self.grid_resolution))
             grid_y = int(np.floor(y / self.grid_resolution))
-
-            if 0 <= grid_x < self.grid_size and 0 <= grid_y < self.grid_size:
-                self.known[grid_y, grid_x] = True
-                self.grid_log_odds[grid_y, grid_x] += self.L_occ
-
             key = (grid_x, grid_y)
+
+            # Initialize the cell entry if it doesn't exist yet
             if key not in grid:
                 grid[key] = {'points': [], 'colors': []}
+
+            # Append the point and its RGB color to the corresponding cell
             grid[key]['points'].append([x, y, z])
             grid[key]['colors'].append([r, g, b])
+        
+        #TODO: This average thingy will be removed later on and instead we will keep point with the highest probability.
+        """we group all points that fall into the same grid cell. 
+        But one cell may contain many points — maybe 5, 50, or even 500.
+        So we average to get a single representative point and color for the entire cell."""
+        cell_points = []  # Stores average positions of each grid cell
+        cell_colors = []  # Stores average normalized RGB color per cell
 
-        occupancy = np.full((self.grid_size, self.grid_size), -1, dtype=np.int8)
-        known_cells = self.known
-        if np.any(known_cells):
-            prob = 1.0 / (1.0 + np.exp(-self.grid_log_odds[known_cells]))
-            occupancy[known_cells] = np.round(prob * 100).astype(np.int8)
-        
-        occ_grid_msg = OccupancyGrid()
-        occ_grid_msg.header.stamp = self.get_clock().now().to_msg()
-        occ_grid_msg.header.frame_id = self.frame_id
-        occ_grid_msg.info.resolution = self.grid_resolution
-        occ_grid_msg.info.width = self.grid_size
-        occ_grid_msg.info.height = self.grid_size
-        occ_grid_msg.info.origin.position.x = self.grid_origin[0]
-        occ_grid_msg.info.origin.position.y = self.grid_origin[1]
-        occ_grid_msg.info.origin.position.z = 0.0
-        occ_grid_msg.data = occupancy.flatten().tolist()
-        
-        self.occupancy_grid_publisher.publish(occ_grid_msg)
-        
-        cell_points = []
-        cell_colors = []
         for key, group in grid.items():
+            # Compute average 3D position from all points in the cell
             pts = np.array(group['points'])
             avg_pt = pts.mean(axis=0) 
+
+            # Compute average RGB color and normalize to 0–1 for ROS
             rgbs = group['colors']
-            avg_rgb = np.mean(rgbs, axis=0) / 255.0
+            avg_rgb = np.clip(np.mean(rgbs, axis=0) / 255.0, 0, 1)
+
+            # Store the results
             cell_points.append(avg_pt)
             cell_colors.append(avg_rgb)
 
         # Create a Marker of type CUBE_LIST.
         marker = Marker()
-        marker.header.stamp = self.get_clock().now().to_msg()
-        marker.header.frame_id = self.frame_id
-        marker.ns = "occupancy_grid"
-        marker.id = 0
-        marker.type = Marker.CUBE_LIST
-        marker.action = Marker.ADD
-        # Set the scale (size) of each cube to be the grid resolution.
-        marker.scale.x = self.grid_resolution
-        marker.scale.y = self.grid_resolution
-        marker.scale.z = self.grid_resolution
-        marker.pose.orientation.w = 1.0
+        marker.header.stamp       = self.get_clock().now().to_msg()
+        marker.header.frame_id    = self.frame_id
+        marker.ns                 = "semantic_map" # Namespace for this marker
+        marker.id                 = 0 # Marker ID
+        marker.type               = Marker.CUBE_LIST # Use cube list to draw colored cells
+        marker.action             = Marker.ADD # Action to add or modify marker
+        marker.scale.x            = self.grid_resolution # Size of each cube along x
+        marker.scale.y            = self.grid_resolution # Size of each cube along y
+        marker.scale.z            = self.grid_resolution # Size of each cube along z
+        marker.pose.orientation.w = 1.0 # Identity quaternion (no rotation)
 
         # Add a cube for each grid cell.
         for pt, col in zip(cell_points, cell_colors):
+            """
+            cell_points: list of average positions [x, y, z] per grid cell.
+            cell_colors: list of average RGB values [r, g, b] (normalized to 0–1) per grid cell.
+            zip(...) pairs each point with its matching color.
+            """
+            # Set cube position
             p = Point()
-            p.x, p.y, p.z = pt
-            marker.points.append(p)
-            color = ColorRGBA()
-            color.r, color.g, color.b = col
-            color.a = 1.0
-            marker.colors.append(color)
+            p.x = float(pt[0]) # x coordinate
+            p.y = float(pt[1]) # y coordinate
+            p.z = 0.0          # z coordinate
+            marker.points.append(p) # add the point to the marker
 
+            # Set cube color
+            color = ColorRGBA() 
+            color.r = float(col[0]) # red channel
+            color.g = float(col[1]) # green channel
+            color.b = float(col[2]) # blue channel
+            color.a = 1.0           # full opacity
+            marker.colors.append(color) 
+
+        # Publish the semantic map
         self.semantic_map_publisher.publish(marker)
 
 # -----------------------------------
