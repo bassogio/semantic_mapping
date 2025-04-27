@@ -48,6 +48,8 @@ echo "Segmentation is ready. Starting the other ROS2 nodes..."
 # python3 src/mapping/semantic_mapping.py &
 # PIDS+=($!)
 
+# python3 src/combined/combined.py &
+
 # Continue with bag playback
 cd /workspace/bags
 

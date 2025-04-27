@@ -14,7 +14,6 @@ from sensor_msgs.msg import PointCloud2
 import sensor_msgs_py.point_cloud2 as pc2
 from std_msgs.msg import Header, ColorRGBA
 from geometry_msgs.msg import PoseStamped, Point
-from visualization_msgs.msg import Marker
 from nav_msgs.msg import OccupancyGrid
 
 # -----------------------------------
@@ -40,11 +39,11 @@ def load_config():
 # -----------------------------------
 # ROS2 Node Definition
 # -----------------------------------
-class SemanticMapNode(Node):
+class OccupancyGridNode(Node):
 
     def __init__(self, config):
         # Initialize the node with a unique name.
-        super().__init__('semantic_map_node')
+        super().__init__('occupancy_grid_node')
 
         # -------------------------------------------
         # Access the configuration section.
@@ -54,41 +53,105 @@ class SemanticMapNode(Node):
         # -------------------------------------------
         # Load configuration parameters.
         # -------------------------------------------
-        self.semantic_map_topic   = self.node_config['semantic_map_topic']   
+        self.occupancy_grid_topic = self.node_config['occupancy_grid_topic']
         self.point_cloud_topic    = self.node_config['point_cloud_topic']
+        self.pose_topic           = self.node_config['pose_topic']
         self.frame_id             = self.node_config['frame_id']
+        self.prior_prob           = self.node_config['prior_prob']
+        self.occupied_prob        = self.node_config['occupied_prob']
+        self.free_prob            = self.node_config['free_prob']
+        self.p_min                = self.node_config['p_min']
+        self.p_max                = self.node_config['p_max']
         self.grid_resolution      = self.node_config['grid_resolution']
+        self.grid_width           = self.node_config['grid_width']
+        self.grid_height          = self.node_config['grid_height']
+        self.grid_origin          = list(map(float, self.node_config['grid_origin']))
 
         # -------------------------------------------
         # Declare ROS2 parameters for runtime modification.
         # -------------------------------------------
-        self.declare_parameter('semantic_map_topic',   self.semantic_map_topic)
+        self.declare_parameter('occupancy_grid_topic', self.occupancy_grid_topic)
         self.declare_parameter('point_cloud_topic',    self.point_cloud_topic)
+        self.declare_parameter('pose_topic',           self.pose_topic)
         self.declare_parameter('frame_id',             self.frame_id)
+        self.declare_parameter('prior_prob',           self.prior_prob)
+        self.declare_parameter('occupied_prob',        self.occupied_prob)
+        self.declare_parameter('free_prob',            self.free_prob)
+        self.declare_parameter('p_min',                self.p_min)
+        self.declare_parameter('p_max',                self.p_max)
         self.declare_parameter('grid_resolution',      self.grid_resolution)
+        self.declare_parameter('grid_width',           self.grid_width)
+        self.declare_parameter('grid_height',          self.grid_height)
+        self.declare_parameter('grid_origin',          self.grid_origin)
 
         # -------------------------------------------
         # Retrieve final parameter values from the parameter server.
         # This allows any runtime overrides (e.g., via launch files) to update these defaults.
         # -------------------------------------------
-        self.semantic_map_topic   = self.get_parameter('semantic_map_topic').value
+        self.occupancy_grid_topic = self.get_parameter('occupancy_grid_topic').value
         self.point_cloud_topic    = self.get_parameter('point_cloud_topic').value
+        self.pose_topic           = self.get_parameter('pose_topic').value
         self.frame_id             = self.get_parameter('frame_id').value
+        self.prior_prob           = self.get_parameter('prior_prob').value
+        self.occupied_prob        = self.get_parameter('occupied_prob').value
+        self.free_prob            = self.get_parameter('free_prob').value
+        self.p_min                = self.get_parameter('p_min').value
+        self.p_max                = self.get_parameter('p_max').value
         self.grid_resolution      = self.get_parameter('grid_resolution').value
-
+        self.grid_width           = self.get_parameter('grid_width').value
+        self.grid_height          = self.get_parameter('grid_height').value
+        self.grid_origin          = self.get_parameter('grid_origin').value
+        
         # -------------------------------------------
         # Initialize CvBridge.
         # -------------------------------------------
         self.bridge = CvBridge()
 
         # -------------------------------------------
+        # Initialize occupancy grid.
+        # -------------------------------------------
+        l_0 = self.prob_to_log_odds(self.prior_prob)
+        self.occupancy_map = np.full((self.grid_height, self.grid_width), l_0, dtype=np.float32)  # Initialize with log odds of prior probability
+
+        # Precompute measurement updates
+        self.l_occupied = self.prob_to_log_odds(self.occupied_prob) # Occupied probability
+        self.l_free = self.prob_to_log_odds(self.free_prob) # Free probability
+        
+        # Define clamping limits:
+        # Define clamping limits on the log-odds values to keep our occupancy probabilities
+        # within a reasonable range and avoid runaway certainty:
+        # - We never want any cell to report less than (p_min * 100)% chance of being occupied,
+        #   nor more than (p_max * 100)% chance, regardless of how many observations we process.
+        # - Converting these probabilities into log-odds gives us l_min and l_max
+        self.l_min = self.prob_to_log_odds(self.p_min)
+        self.l_max = self.prob_to_log_odds(self.p_max)
+
+        # -------------------------------------------
+        # Initialize pose variables.
+        # -------------------------------------------
+        self.Qw     = 1.0  # Default orientation (identity quaternion)
+        self.Qx     = 0.0
+        self.Qy     = 0.0
+        self.Qz     = 0.0
+        self.pose_x = 0.0
+        self.pose_y = 0.0
+        self.pose_z = 0.0
+
+        # -------------------------------------------
         # Create Publishers.
         # -------------------------------------------
-        self.semantic_map_publisher   = self.create_publisher(Marker, self.semantic_map_topic, 10)
+        self.occupancy_grid_publisher = self.create_publisher(OccupancyGrid, self.occupancy_grid_topic, 10)
 
         # -------------------------------------------
         # Create Subscribers.
         # -------------------------------------------
+        self.pose_subscription = self.create_subscription(
+            PoseStamped,              # Message type.
+            self.pose_topic,         # Topic name.
+            self.pose_callback,      # Callback function.
+            10                       # Queue size.
+        )
+
         self.point_cloud_subscription = self.create_subscription(
             PointCloud2,               # Message type.
             self.point_cloud_topic,    # Topic name.
@@ -120,12 +183,28 @@ class SemanticMapNode(Node):
         else:
             self.get_logger().info(
                 "All subscribed topics have received at least one message."
-                f"SemanticMapNode started with publishers on '{self.semantic_map_topic}' and '{self.occupancy_grid_topic}', "
+                f"OccupancyGridNode started with publishers on '{self.occupancy_grid_topic}', "
                 f"subscribers on '{self.point_cloud_topic}', "
                 f"and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
     
+    # -------------------------------------------
+    # Pose Callback Function
+    # -------------------------------------------
+    def pose_callback(self, msg):
+        if not self.received_pose:
+            self.received_pose = True
+        # Update quaternion and translation from pose message.
+        self.Qx = msg.pose.orientation.x
+        self.Qy = msg.pose.orientation.y
+        self.Qz = msg.pose.orientation.z
+        self.Qw = msg.pose.orientation.w
+        self.pose_x = msg.pose.position.x
+        self.pose_y = msg.pose.position.y
+        self.pose_z = msg.pose.position.z
+
+    # TODO: I don't need to extract the rgb data from the point cloud
     # -------------------------------------------
     # Point cloud Callback Function
     # -------------------------------------------
@@ -150,6 +229,34 @@ class SemanticMapNode(Node):
         self.publish_maps()
 
     # -------------------------------------------
+    # Probability to Log Odds
+    # -------------------------------------------
+    def prob_to_log_odds(self, p):
+        """
+        Log odds ratio of p(x):
+
+                      p(x)
+        l(x) = log ----------
+                    1 - p(x)
+
+        """
+        return np.log(p / (1 - p))
+    
+    # -------------------------------------------
+    # Log Odds to Probability
+    # -------------------------------------------
+    def log_odds_to_prob(self, l):
+        """
+        Probability of p(x) from log odds ratio l(x):
+
+                         1
+        p(x) = 1 - ---------------
+                    1 + e(l(x))
+
+        """
+        return 1 - (1 / (1 + np.exp(l)))
+
+    # -------------------------------------------
     # Maps Publishing Function
     # -------------------------------------------
     def publish_maps(self):
@@ -157,76 +264,27 @@ class SemanticMapNode(Node):
         grid = {}
         for pt in self.all_points:
             x, y, z, r, g, b = pt
+            # world→grid with origin offset
             # Calculate grid cell index by quantizing x and y using resolution
-            grid_x = int(np.floor(x / self.grid_resolution))
-            grid_y = int(np.floor(y / self.grid_resolution))
-            key = (grid_x, grid_y)
+            grid_x = int((x - self.grid_origin[0]) / self.grid_resolution)
+            grid_y = int((y - self.grid_origin[1]) / self.grid_resolution)
+            
+            # Check if the grid cell is within bounds
+            if grid_x < 0 or grid_x >= self.grid_width or grid_y < 0 or grid_y >= self.grid_height:
+                continue
+
+            key = (grid_x, grid_y) 
 
             # Initialize the cell entry if it doesn't exist yet
             if key not in grid:
-                grid[key] = {'points': [], 'colors': []}
+                grid[key] = {'points': []}
 
-            # Append the point and its RGB color to the corresponding cell
+            # Append the point corresponding cell
             grid[key]['points'].append([x, y, z])
-            grid[key]['colors'].append([r, g, b])
+
         
-        #TODO: This average thingy will be removed later on and instead we will keep point with the highest probability.
-        """we group all points that fall into the same grid cell. 
-        But one cell may contain many points — maybe 5, 50, or even 500.
-        So we average to get a single representative point and color for the entire cell."""
-        cell_points = []  # Stores average positions of each grid cell
-        cell_colors = []  # Stores average normalized RGB color per cell
-
-        for key, group in grid.items():
-            # Compute average 3D position from all points in the cell
-            pts = np.array(group['points'])
-            avg_pt = pts.mean(axis=0) 
-
-            # Compute average RGB color and normalize to 0–1 for ROS
-            rgbs = group['colors']
-            avg_rgb = np.clip(np.mean(rgbs, axis=0) / 255.0, 0, 1)
-
-            # Store the results
-            cell_points.append(avg_pt)
-            cell_colors.append(avg_rgb)
-
-        # Create a Marker of type CUBE_LIST.
-        marker = Marker()
-        marker.header.stamp       = self.get_clock().now().to_msg()
-        marker.header.frame_id    = self.frame_id
-        marker.ns                 = "semantic_map" # Namespace for this marker
-        marker.id                 = 0 # Marker ID
-        marker.type               = Marker.CUBE_LIST # Use cube list to draw colored cells
-        marker.action             = Marker.ADD # Action to add or modify marker
-        marker.scale.x            = self.grid_resolution # Size of each cube along x
-        marker.scale.y            = self.grid_resolution # Size of each cube along y
-        marker.scale.z            = self.grid_resolution # Size of each cube along z
-        marker.pose.orientation.w = 1.0 # Identity quaternion (no rotation)
-
-        # Add a cube for each grid cell.
-        for pt, col in zip(cell_points, cell_colors):
-            """
-            cell_points: list of average positions [x, y, z] per grid cell.
-            cell_colors: list of average RGB values [r, g, b] (normalized to 0–1) per grid cell.
-            zip(...) pairs each point with its matching color.
-            """
-            # Set cube position
-            p = Point()
-            p.x = float(pt[0]) # x coordinate
-            p.y = float(pt[1]) # y coordinate
-            p.z = 0.0          # z coordinate
-            marker.points.append(p) # add the point to the marker
-
-            # Set cube color
-            color = ColorRGBA() 
-            color.r = float(col[0]) # red channel
-            color.g = float(col[1]) # green channel
-            color.b = float(col[2]) # blue channel
-            color.a = 1.0           # full opacity
-            marker.colors.append(color) 
-
-        # Publish the semantic map
-        self.semantic_map_publisher.publish(marker)
+        # Publish the occupancy grid.
+        # self.occupancy_grid_publisher.publish()
 
 # -----------------------------------
 # Main Entry Point
@@ -234,7 +292,7 @@ class SemanticMapNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     config = load_config()
-    node = SemanticMapNode(config)
+    node = OccupancyGridNode(config)
     
     try:
         rclpy.spin(node)
