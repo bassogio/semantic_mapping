@@ -19,22 +19,22 @@ trap cleanup SIGINT SIGTERM
 # Source ROS 2 environment
 source /opt/ros/humble/setup.bash
 
-# TEMP LOG FILE TO MONITOR SEGMENTATION STDOUT
-SEG_LOG=/tmp/segmentation_log
+# # TEMP LOG FILE TO MONITOR SEGMENTATION STDOUT
+# SEG_LOG=/tmp/segmentation_log
 
-# Start segmentation node, log to file and stdout
-echo "Starting segmentation_processor.py..."
-python3 src/segmentation/optimized/segmentation_processor.py 2>&1 | tee "$SEG_LOG" &
-SEG_PID=$!
-PIDS+=($SEG_PID)
+# # Start segmentation node, log to file and stdout
+# echo "Starting segmentation_processor.py..."
+# python3 src/segmentation/optimized/segmentation_processor.py 2>&1 | tee "$SEG_LOG" &
+# SEG_PID=$!
+# PIDS+=($SEG_PID)
 
-# Wait for the log line
-echo "Waiting for segmentation node to be ready..."
-while ! grep -q "Waiting for messages on topics: '/davis/left/image_raw'" "$SEG_LOG"; do
-  sleep 0.5
-done
+# # Wait for the log line
+# echo "Waiting for segmentation node to be ready..."
+# while ! grep -q "Waiting for messages on topics: '/davis/left/image_raw'" "$SEG_LOG"; do
+#   sleep 0.5
+# done
 
-echo "Segmentation is ready. Starting the other ROS2 nodes..."
+# echo "Segmentation is ready. Starting the other ROS2 nodes..."
 
 # # # Start other nodes now that segmentation is waiting for input
 # python3 src/point_cloud/point_cloud_processor.py &

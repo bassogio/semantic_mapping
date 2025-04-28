@@ -4,38 +4,24 @@
 import os
 import yaml
 import numpy as np
-import struct  
-import cv2   
-from cv_bridge import CvBridge
-from transforms3d.quaternions import quat2mat
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import PointCloud2
-import sensor_msgs_py.point_cloud2 as pc2
-from std_msgs.msg import Header, ColorRGBA
-from geometry_msgs.msg import PoseStamped, Point
+
+from sensor_msgs.msg import PointCloud2, PointField
 from visualization_msgs.msg import Marker
-from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import ColorRGBA
+from geometry_msgs.msg import Point
 
 # -----------------------------------
 # Configuration Loader Function
 # -----------------------------------
 def load_config():
-    """
-    Load configuration parameters.
-
-    Returns:
-        dict: A dictionary containing configuration data.
-    """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir  = os.path.dirname(os.path.abspath(__file__))
     config_file = os.path.join(script_dir, '../../config/semantic_mapping_config.yaml')
-    
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    else:
-        raise FileNotFoundError(f"Config file not found at: {config_file}")
+            return yaml.safe_load(f)
+    raise FileNotFoundError(f"Config file not found at: {config_file}")
 
 # -----------------------------------
 # ROS2 Node Definition
@@ -43,209 +29,142 @@ def load_config():
 class SemanticMapNode(Node):
 
     def __init__(self, config):
-        # Initialize the node with a unique name.
         super().__init__('semantic_map_node')
+        nc = config['semantic_mapping']
 
-        # -------------------------------------------
-        # Access the configuration section.
-        # -------------------------------------------
-        self.node_config = config['semantic_mapping']
+        # Declare & read parameters
+        self.semantic_map_topic = self.declare_parameter('semantic_map_topic', nc['semantic_map_topic']).value
+        self.point_cloud_topic = self.declare_parameter('point_cloud_topic', nc['point_cloud_topic']).value
+        self.frame_id          = self.declare_parameter('frame_id', nc['frame_id']).value
+        self.resolution        = self.declare_parameter('grid_resolution', nc['grid_resolution']).value
 
-        # -------------------------------------------
-        # Load configuration parameters.
-        # -------------------------------------------
-        self.semantic_map_topic   = self.node_config['semantic_map_topic']   
-        self.point_cloud_topic    = self.node_config['point_cloud_topic']
-        self.frame_id             = self.node_config['frame_id']
-        self.grid_resolution      = self.node_config['grid_resolution']
+        # Publisher & Subscriber
+        self.map_pub = self.create_publisher(Marker, self.semantic_map_topic, 10)
+        self.create_subscription(PointCloud2,
+                                 self.point_cloud_topic,
+                                 self.pc_callback,
+                                 10)
 
-        # -------------------------------------------
-        # Declare ROS2 parameters for runtime modification.
-        # -------------------------------------------
-        self.declare_parameter('semantic_map_topic',   self.semantic_map_topic)
-        self.declare_parameter('point_cloud_topic',    self.point_cloud_topic)
-        self.declare_parameter('frame_id',             self.frame_id)
-        self.declare_parameter('grid_resolution',      self.grid_resolution)
+    def pc_callback(self, msg: PointCloud2):
+        # --- 1) Build a NumPy dtype matching the PointCloud2 fields ---
+        dtype_map = {
+            PointField.INT8:   np.int8,
+            PointField.UINT8:  np.uint8,
+            PointField.INT16:  np.int16,
+            PointField.UINT16: np.uint16,
+            PointField.INT32:  np.int32,
+            PointField.UINT32: np.uint32,
+            PointField.FLOAT32: np.float32,
+            PointField.FLOAT64: np.float64,
+        }
+        names   = [f.name for f in msg.fields]
+        formats = [dtype_map[f.datatype] for f in msg.fields]
+        offsets = [f.offset for f in msg.fields]
+        pc_dtype = np.dtype({
+            'names':   names,
+            'formats': formats,
+            'offsets': offsets,
+            'itemsize': msg.point_step
+        })
 
-        # -------------------------------------------
-        # Retrieve final parameter values from the parameter server.
-        # This allows any runtime overrides (e.g., via launch files) to update these defaults.
-        # -------------------------------------------
-        self.semantic_map_topic   = self.get_parameter('semantic_map_topic').value
-        self.point_cloud_topic    = self.get_parameter('point_cloud_topic').value
-        self.frame_id             = self.get_parameter('frame_id').value
-        self.grid_resolution      = self.get_parameter('grid_resolution').value
+        # --- 2) Interpret raw buffer as structured array ---
+        pc_arr = np.frombuffer(msg.data, dtype=pc_dtype)
+        if msg.is_bigendian:
+            pc_arr = pc_arr.byteswap().newbyteorder()
 
-        # -------------------------------------------
-        # Initialize CvBridge.
-        # -------------------------------------------
-        self.bridge = CvBridge()
+        # --- 3) Mask-out invalid points ---
+        # Assume fields 'x','y','z' exist
+        valid = np.isfinite(pc_arr['x']) & np.isfinite(pc_arr['y']) & np.isfinite(pc_arr['z'])
+        xyz = np.vstack((pc_arr['x'][valid],
+                         pc_arr['y'][valid],
+                         pc_arr['z'][valid])).T  # shape (N,3)
 
-        # -------------------------------------------
-        # Create Publishers.
-        # -------------------------------------------
-        self.semantic_map_publisher   = self.create_publisher(Marker, self.semantic_map_topic, 10)
-
-        # -------------------------------------------
-        # Create Subscribers.
-        # -------------------------------------------
-        self.point_cloud_subscription = self.create_subscription(
-            PointCloud2,               # Message type.
-            self.point_cloud_topic,    # Topic name.
-            self.point_cloud_callback, # Callback function.
-            10                         # Queue size.
-        )
-
-        # -------------------------------------------
-        # Initialize flags to track if each subscriber has received a message.
-        # -------------------------------------------
-        self.received_point_cloud = False
-
-        # -------------------------------------------
-        # Create a Timer to check if all subscribed topics have received at least one message.
-        # This timer will stop checking once messages from both topics have been received.
-        # -------------------------------------------
-        self.subscription_check_timer = self.create_timer(2.0, self.check_initial_subscriptions)
-
-    # -------------------------------------------
-    # Timer Callback to Check if All Subscribed Topics Have Received at Least One Message
-    # -------------------------------------------
-    def check_initial_subscriptions(self):
-        waiting_topics = []
-        if not self.received_point_cloud:
-            waiting_topics.append(f"'{self.point_cloud_topic}'")
-            
-        if waiting_topics:
-            self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
+        # --- 4) Extract & unpack RGB ---
+        if 'rgb' in pc_arr.dtype.names:
+            raw_rgb = pc_arr['rgb'][valid]
+        elif 'rgba' in pc_arr.dtype.names:
+            raw_rgb = pc_arr['rgba'][valid]
         else:
-            self.get_logger().info(
-                "All subscribed topics have received at least one message."
-                f"SemanticMapNode started with publishers on '{self.semantic_map_topic}' and '{self.occupancy_grid_topic}', "
-                f"subscribers on '{self.point_cloud_topic}', "
-                f"and frame_id '{self.frame_id}'."
-            )
-            self.subscription_check_timer.cancel()
-    
-    # -------------------------------------------
-    # Point cloud Callback Function
-    # -------------------------------------------
-    def point_cloud_callback(self, msg):
-        if not self.received_point_cloud:
-            self.received_point_cloud = True
-        
-        # Read all the points
-        points = list(pc2.read_points(msg, field_names=("x", "y", "z", "rgb"), skip_nans=True))
+            raise RuntimeError("PointCloud2 has no 'rgb' or 'rgba' field")
+        # reinterpret bits if stored as float
+        if raw_rgb.dtype == np.float32:
+            rgb_uint = raw_rgb.view(np.uint32)
+        else:
+            rgb_uint = raw_rgb.astype(np.uint32)
+        # split channels
+        r = ((rgb_uint >> 16) & 0xFF).astype(np.float64)
+        g = ((rgb_uint >>  8) & 0xFF).astype(np.float64)
+        b = ( rgb_uint        & 0xFF).astype(np.float64)
 
-        #  Preallocate NumPy array
-        self.all_points = np.zeros((len(points), 6), dtype=np.float32)  # x, y, z, r, g, b
+        # --- 5) Compute grid indices i,j for each point ---
+        coords = xyz[:, :2] / self.resolution
+        ij = np.floor(coords).astype(np.int64)  # shape (N,2)
 
-        # Fill the array manually
-        for i, (x, y, z, rgb_float) in enumerate(points):
-            rgb_uint = struct.unpack('I', struct.pack('f', rgb_float))[0]
-            r = (rgb_uint >> 16) & 0xFF
-            g = (rgb_uint >> 8) & 0xFF
-            b = rgb_uint & 0xFF
-            self.all_points[i] = [x, y, z, r, g, b]
+        # --- 6) Group by (i,j) via structured array + np.unique ---
+        ij_dtype = np.dtype([('i', np.int64), ('j', np.int64)])
+        ij_struct = np.empty(ij.shape[0], dtype=ij_dtype)
+        ij_struct['i'], ij_struct['j'] = ij[:,0], ij[:,1]
 
-        self.publish_maps()
+        unique_cells, inverse = np.unique(ij_struct, return_inverse=True)
+        counts = np.bincount(inverse)
+        n_cells = unique_cells.shape[0]
 
-    # -------------------------------------------
-    # Maps Publishing Function
-    # -------------------------------------------
-    def publish_maps(self):
-        # Group points into 2D grid cells.
-        grid = {}
-        for pt in self.all_points:
-            x, y, z, r, g, b = pt
-            # Calculate grid cell index by quantizing x and y using resolution
-            grid_x = int(np.floor(x / self.grid_resolution))
-            grid_y = int(np.floor(y / self.grid_resolution))
-            key = (grid_x, grid_y)
+        # --- 7) Sum positions & colors per cell ---
+        sum_xyz = np.zeros((n_cells,3), dtype=np.float64)
+        sum_r   = np.zeros(n_cells,    dtype=np.float64)
+        sum_g   = np.zeros(n_cells,    dtype=np.float64)
+        sum_b   = np.zeros(n_cells,    dtype=np.float64)
 
-            # Initialize the cell entry if it doesn't exist yet
-            if key not in grid:
-                grid[key] = {'points': [], 'colors': []}
+        np.add.at(sum_xyz, inverse, xyz)
+        np.add.at(sum_r,   inverse, r)
+        np.add.at(sum_g,   inverse, g)
+        np.add.at(sum_b,   inverse, b)
 
-            # Append the point and its RGB color to the corresponding cell
-            grid[key]['points'].append([x, y, z])
-            grid[key]['colors'].append([r, g, b])
-        
-        #TODO: This average thingy will be removed later on and instead we will keep point with the highest probability.
-        """we group all points that fall into the same grid cell. 
-        But one cell may contain many points — maybe 5, 50, or even 500.
-        So we average to get a single representative point and color for the entire cell."""
-        cell_points = []  # Stores average positions of each grid cell
-        cell_colors = []  # Stores average normalized RGB color per cell
+        # --- 8) Compute averages ---
+        avg_xyz = sum_xyz / counts[:,None]
+        avg_rgb = np.vstack((sum_r, sum_g, sum_b)).T / counts[:,None] / 255.0  # shape (n_cells,3)
 
-        for key, group in grid.items():
-            # Compute average 3D position from all points in the cell
-            pts = np.array(group['points'])
-            avg_pt = pts.mean(axis=0) 
-
-            # Compute average RGB color and normalize to 0–1 for ROS
-            rgbs = group['colors']
-            avg_rgb = np.clip(np.mean(rgbs, axis=0) / 255.0, 0, 1)
-
-            # Store the results
-            cell_points.append(avg_pt)
-            cell_colors.append(avg_rgb)
-
-        # Create a Marker of type CUBE_LIST.
+        # --- 9) Build & publish the Marker ---
         marker = Marker()
-        marker.header.stamp       = self.get_clock().now().to_msg()
-        marker.header.frame_id    = self.frame_id
-        marker.ns                 = "semantic_map" # Namespace for this marker
-        marker.id                 = 0 # Marker ID
-        marker.type               = Marker.CUBE_LIST # Use cube list to draw colored cells
-        marker.action             = Marker.ADD # Action to add or modify marker
-        marker.scale.x            = self.grid_resolution # Size of each cube along x
-        marker.scale.y            = self.grid_resolution # Size of each cube along y
-        marker.scale.z            = self.grid_resolution # Size of each cube along z
-        marker.pose.orientation.w = 1.0 # Identity quaternion (no rotation)
+        marker.header.frame_id = self.frame_id
+        marker.header.stamp    = self.get_clock().now().to_msg()
+        marker.ns              = "semantic_map"
+        marker.id              = 0
+        marker.type            = Marker.CUBE_LIST
+        marker.action          = Marker.ADD
+        marker.scale.x         = self.resolution
+        marker.scale.y         = self.resolution
+        marker.scale.z         = self.resolution
+        marker.pose.orientation.w = 1.0
 
-        # Add a cube for each grid cell.
-        for pt, col in zip(cell_points, cell_colors):
-            """
-            cell_points: list of average positions [x, y, z] per grid cell.
-            cell_colors: list of average RGB values [r, g, b] (normalized to 0–1) per grid cell.
-            zip(...) pairs each point with its matching color.
-            """
-            # Set cube position
-            p = Point()
-            p.x = float(pt[0]) # x coordinate
-            p.y = float(pt[1]) # y coordinate
-            p.z = 0.0          # z coordinate
-            marker.points.append(p) # add the point to the marker
+        for idx in range(n_cells):
+            x, y, _ = avg_xyz[idx]
+            rr, gg, bb = avg_rgb[idx]
 
-            # Set cube color
-            color = ColorRGBA() 
-            color.r = float(col[0]) # red channel
-            color.g = float(col[1]) # green channel
-            color.b = float(col[2]) # blue channel
-            color.a = 1.0           # full opacity
-            marker.colors.append(color) 
+            pt = Point(x=float(x), y=float(y), z=0.0)
+            col = ColorRGBA(r=float(rr), g=float(gg), b=float(bb), a=1.0)
 
-        # Publish the semantic map
-        self.semantic_map_publisher.publish(marker)
+            marker.points.append(pt)
+            marker.colors.append(col)
+
+        self.map_pub.publish(marker)
+
 
 # -----------------------------------
 # Main Entry Point
 # -----------------------------------
 def main(args=None):
     rclpy.init(args=args)
-    config = load_config()
-    node = SemanticMapNode(config)
-    
+    cfg = load_config()
+    node = SemanticMapNode(cfg)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass  # Allow graceful shutdown on CTRL+C.
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
-# -----------------------------------
-# Run the node when the script is executed directly.
-# -----------------------------------
+
 if __name__ == '__main__':
     main()

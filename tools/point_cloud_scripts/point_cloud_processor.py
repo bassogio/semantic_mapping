@@ -190,6 +190,12 @@ class PointCloudNode(Node):
             # Combine the valid 3D points into an (N, 3) numpy array.
             points = np.stack((x, y, z), axis=-1)
 
+            # ------ Apply your fixed rotation here ------
+            R = np.array([[1,  0,  0],
+                          [0,  0, -1],
+                          [0,  -1,  0]], dtype=np.float32)
+            points = points @ R.T
+
             # Convert the quaternion to a 3x3 rotation matrix.
             # transforms3d expects quaternion order as (w, x, y, z).
             quat = [1.0, 0.0, 0.0, 0.0] # Example quaternion (identity rotation).
