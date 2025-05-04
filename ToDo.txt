@@ -5,63 +5,10 @@ Do I need to add any more parameters when i publish camerainfo?
 
 Pose rotation:
 https://github.com/carlos-argueta/rse_prob_robotics/blob/main/rse_common_utils/rse_common_utils/sensor_utils.py#L321
-def rotate_pose3D(pose, roll_angle, pitch_angle, yaw_angle):
-    # Extract position and orientation from the pose
-    x, y, z, roll, pitch, yaw = pose
-
-    # Convert angles to radians
-    roll_rad = np.deg2rad(roll_angle)
-    pitch_rad = np.deg2rad(pitch_angle)
-    yaw_rad = np.deg2rad(yaw_angle)
-
-    # Rotation matrices for roll, pitch, and yaw
-    R_roll = np.array([
-        [1, 0, 0],
-        [0, np.cos(roll_rad), -np.sin(roll_rad)],
-        [0, np.sin(roll_rad), np.cos(roll_rad)]
-    ])
-    
-    R_pitch = np.array([
-        [np.cos(pitch_rad), 0, np.sin(pitch_rad)],
-        [0, 1, 0],
-        [-np.sin(pitch_rad), 0, np.cos(pitch_rad)]
-    ])
-    
-    R_yaw = np.array([
-        [np.cos(yaw_rad), -np.sin(yaw_rad), 0],
-        [np.sin(yaw_rad), np.cos(yaw_rad), 0],
-        [0, 0, 1]
-    ])
-
-    # Combined rotation matrix
-    R_combined = R_yaw @ R_pitch @ R_roll
-
-    # Apply the rotation to the position part of the pose
-    rotated_position = R_combined.dot(np.array([x, y, z]))
-
-    # Rotate the orientation by the same amount, ensuring it wraps correctly
-    rotated_roll = (roll + roll_rad) % (2 * np.pi)
-    rotated_pitch = (pitch + pitch_rad) % (2 * np.pi)
-    rotated_yaw = (yaw + yaw_rad) % (2 * np.pi)
-
-    # Return the new pose with the rotated position and orientation
-    return (rotated_position[0], rotated_position[1], rotated_position[2], rotated_roll, rotated_pitch, rotated_yaw)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+https://github.com/KanishAnand/Point-Cloud-Registration-and-Occupancy-Grid-Reconstruction/tree/master
 
 
 
@@ -73,11 +20,20 @@ https://github.com/Peter010103/Occupancy-Grid-Map-Demonstration/blob/main/Occupa
 https://courses.cs.washington.edu/courses/cse571/19wi/lectures/Jan_16th_Mapping_Notes.pdf
 http://ais.informatik.uni-freiburg.de/teaching/ss16/robotics/slides/12-occupancy-mapping.pdf
 https://www.cs.cmu.edu/~16831-f12/notes/F14/16831_lecture06_agiri_dmcconac_kumarsha_nbhakta.pdf
-https://docs.ufpr.br/~danielsantos/ProbabilisticRobotics.pdf
 
 checkout:
 https://github.com/yubaoliu/semantic_slam_floatlazer
 
+https://docs.ufpr.br/~danielsantos/ProbabilisticRobotics.pdf
 
-
+https://www.diva-portal.org/smash/get/diva2:1900124/FULLTEXT01.pdf
+https://www.diva-portal.org/smash/get/diva2:1900124/FULLTEXT01.pdf#subsection.2.3.1
+https://www.diva-portal.org/smash/get/diva2:1900124/FULLTEXT01.pdf#section.2.2
 https://www.diva-portal.org/smash/get/diva2:1900124/FULLTEXT01.pdf#section.2.6
+
+
+https://towardsdatascience.com/occupancy-grid-mapping-with-webots-and-ros2-a6162a644fab/
+
+
+
+https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_probabilistic_occupancy_grid_map/pointcloud-based-occupancy-grid-map/

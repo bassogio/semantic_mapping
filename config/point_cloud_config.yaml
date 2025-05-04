@@ -4,12 +4,12 @@ point_cloud_processing:
   max_distance:              30.0 # Maximum distance for depth clipping in meters
   point_cloud_topic:         "/camera/pointcloud" # Topic to publish the point cloud
   pose_topic:                "/davis/rotated_pose" # Topic to subscribe to pose
-  depth_scale:               0.01
-  depth_image_topic:         "/camera/depth/image_raw" # Topic to subscribe to depth image
-  camera_parameters_topic:   "/camera/camera_info" # Topic to subscribe to camera_info
-  # depth_scale:               1.0
-  # depth_image_topic:         "/davis/left/depth_image_raw" # Topic to subscribe to depth image from bag
-  # camera_parameters_topic:   "/davis/left/camera_info" # Topic to subscribe to camera_info from bag  
+  # depth_scale:               0.01
+  # depth_image_topic:         "/camera/depth/image_raw" # Topic to subscribe to depth image
+  # camera_parameters_topic:   "/camera/camera_info" # Topic to subscribe to camera_info
+  depth_scale:               1.0
+  depth_image_topic:         "/davis/left/depth_image_raw" # Topic to subscribe to depth image from bag
+  camera_parameters_topic:   "/davis/left/camera_info" # Topic to subscribe to camera_info from bag  
   semantic_image_topic:      "/camera/segmentation" # Topic to subscribe to semantic image
   subsample_step: 2       # 1=no subsampling, 2=every 2nd pixel, etc.
 

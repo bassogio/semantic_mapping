@@ -163,6 +163,7 @@ class OccupancyGridNode(Node):
         # Initialize flags to track if each subscriber has received a message.
         # -------------------------------------------
         self.received_point_cloud = False
+        self.received_pose = False
 
         # -------------------------------------------
         # Create a Timer to check if all subscribed topics have received at least one message.
@@ -177,14 +178,16 @@ class OccupancyGridNode(Node):
         waiting_topics = []
         if not self.received_point_cloud:
             waiting_topics.append(f"'{self.point_cloud_topic}'")
-            
+        if not self.received_pose:
+            waiting_topics.append(f"'{self.pose_topic}'")
+
         if waiting_topics:
             self.get_logger().info(f"Waiting for messages on topics: {', '.join(waiting_topics)}")
         else:
             self.get_logger().info(
                 "All subscribed topics have received at least one message."
                 f"OccupancyGridNode started with publishers on '{self.occupancy_grid_topic}', "
-                f"subscribers on '{self.point_cloud_topic}', "
+                f"subscribers on '{self.point_cloud_topic}' and '{self.pose_topic}', "
                 f"and frame_id '{self.frame_id}'."
             )
             self.subscription_check_timer.cancel()
@@ -263,7 +266,7 @@ class OccupancyGridNode(Node):
         # Group points into 2D grid cells.
         grid = {}
         for pt in self.all_points:
-            x, y, z, r, g, b = pt
+            x, y, z, _, _, _ = pt
             # world→grid with origin offset
             # Calculate grid cell index by quantizing x and y using resolution
             grid_x = int((x - self.grid_origin[0]) / self.grid_resolution)

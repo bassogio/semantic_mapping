@@ -98,6 +98,29 @@ class RotatedPoseNode(Node):
         yaw_rad   = np.deg2rad(self.yaw)
         self.rotation_matrix = euler2mat(roll_rad, pitch_rad, yaw_rad, axes='sxyz')
 
+        # R_roll = np.array([
+        #     [1, 0, 0],
+        #     [0, np.cos(roll_rad), -np.sin(roll_rad)],
+        #     [0, np.sin(roll_rad),  np.cos(roll_rad)]
+        # ])
+
+        # R_pitch = np.array([
+        #     [ np.cos(pitch_rad), 0, np.sin(pitch_rad)],
+        #     [0, 1, 0],
+        #     [-np.sin(pitch_rad), 0, np.cos(pitch_rad)]
+        # ])
+
+        # R_yaw = np.array([
+        #     [np.cos(yaw_rad), -np.sin(yaw_rad), 0],
+        #     [np.sin(yaw_rad),  np.cos(yaw_rad), 0],
+        #     [0, 0, 1]
+        # ])
+
+        # # Combine into a single rotation: apply roll, then pitch, then yaw.
+        # R_combined = R_yaw @ R_pitch @ R_roll
+
+        # self.rotation_matrix = R_combined
+
         # -------------------------------------------
         # Create Publisher.
         # -------------------------------------------

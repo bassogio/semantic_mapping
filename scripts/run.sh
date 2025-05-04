@@ -19,6 +19,7 @@ docker run -it --rm \
     -v /home/orin_nano1/SemanticMapping-GiordanoBasso/src:/workspace/src \
     -v /home/orin_nano1/SemanticMapping-GiordanoBasso/config:/workspace/config \
     -v /home/orin_nano1/SemanticMapping-GiordanoBasso/entrypoint.sh:/workspace/entrypoint.sh \
+    -v /home/orin_nano1/SemanticMapping-GiordanoBasso/tools:/workspace/tools \
     "$IMAGE_NAME"
     # "$IMAGE_NAME" /workspace/entrypoint.sh
 

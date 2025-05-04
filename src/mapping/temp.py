@@ -1,59 +1,19 @@
-# -----------------------------------
-# Import Statements
-# -----------------------------------
+#!/usr/bin/env python3
 import os
 import yaml
 import numpy as np
-import struct  
 from cv_bridge import CvBridge
 from transforms3d.quaternions import quat2mat
 import rclpy
 from rclpy.node import Node
-import sensor_msgs_py.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
+import sensor_msgs_py.point_cloud2 as pc2
 from std_msgs.msg import Header
-from geometry_msgs.msg import PoseStamped, Point, Pose, Quaternion
-from nav_msgs.msg import OccupancyGrid, MapMetaData
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import OccupancyGrid
+import math
 
-# -----------------------------------
-# Bresenham's line algorithm
-# -----------------------------------
-def bresenham(x0, y0, x1, y1):
-    """
-    Returns list of grid cells from (x0,y0) to (x1,y1).
-    """
-    points = []
-    dx = abs(x1 - x0)
-    dy = abs(y1 - y0)
-    x, y = x0, y0
-    sx = 1 if x1 > x0 else -1
-    sy = 1 if y1 > y0 else -1
 
-    if dx > dy:
-        err = dx / 2.0
-        while x != x1:
-            points.append((x, y))
-            err -= dy
-            if err < 0:
-                y += sy
-                err += dx
-            x += sx
-    else:
-        err = dy / 2.0
-        while y != y1:
-            points.append((x, y))
-            err -= dx
-            if err < 0:
-                x += sx
-                err += dy
-            y += sy
-
-    points.append((x1, y1))
-    return points
-
-# -----------------------------------
-# Configuration Loader Function
-# -----------------------------------
 def load_config():
     """
     Load configuration parameters.
@@ -63,152 +23,170 @@ def load_config():
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_file = os.path.join(script_dir, '../../config/semantic_mapping_config.yaml')
-    
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             return yaml.safe_load(f)
-    else:
-        raise FileNotFoundError(f"Config file not found at: {config_file}")
+    raise FileNotFoundError(f"Config file not found at: {config_file}")
 
-# -----------------------------------
-# ROS2 Node Definition
-# -----------------------------------
+
 class OccupancyGridNode(Node):
-
     def __init__(self, config):
         super().__init__('occupancy_grid_node')
-        self.node_config         = config['semantic_mapping']
-        # Load parameters
-        self.occupancy_grid_topic = self.node_config['occupancy_grid_topic']
-        self.point_cloud_topic    = self.node_config['point_cloud_topic']
-        self.pose_topic           = self.node_config['pose_topic']
-        self.frame_id             = self.node_config['frame_id']
-        self.prior_prob           = self.node_config['prior_prob']
-        self.occupied_prob        = self.node_config['occupied_prob']
-        self.free_prob            = self.node_config['free_prob']
-        self.p_min                = self.node_config['p_min']
-        self.p_max                = self.node_config['p_max']
-        self.grid_resolution      = self.node_config['grid_resolution']
-        self.grid_width           = self.node_config['grid_width']
-        self.grid_height          = self.node_config['grid_height']
-        self.grid_origin          = list(map(float, self.node_config['grid_origin']))
-        
-        # Declare & get ROS2 parameters (allow runtime overrides)
-        for name in ['occupancy_grid_topic','point_cloud_topic','pose_topic','frame_id',
-                     'prior_prob','occupied_prob','free_prob','p_min','p_max',
-                     'grid_resolution','grid_width','grid_height','grid_origin']:
-            self.declare_parameter(name, getattr(self, name))
-            setattr(self, name, self.get_parameter(name).value)
+        cfg = config['semantic_mapping']
 
-        # Bridge & map initialization
-        self.bridge = CvBridge()
-        self.l0     = self.prob_to_log_odds(self.prior_prob)
-        self.occupancy_map = np.full(
-            (self.grid_height, self.grid_width),
-            self.l0, dtype=np.float32
-        )
-        # precompute log-odds of measurements
-        self.l_occ  = self.prob_to_log_odds(self.occupied_prob)
-        self.l_free = self.prob_to_log_odds(self.free_prob)
-        # clamp limits
-        self.l_min  = self.prob_to_log_odds(self.p_min)
-        self.l_max  = self.prob_to_log_odds(self.p_max)
+        # Topics & frames
+        self.occupancy_topic = cfg['occupancy_grid_topic']
+        self.pc_topic        = cfg['point_cloud_topic']
+        self.pose_topic      = cfg['pose_topic']
+        self.frame_id        = cfg['frame_id']
 
-        # pose
-        self.received_pose = False
+        # Probabilities & resolution
+        self.grid_resolution = float(cfg['grid_resolution'])
+        self.grid_origin     = list(map(float, cfg['grid_origin']))
+        self.prior_p         = float(cfg['prior_prob'])
+        self.occ_p           = float(cfg['occupied_prob'])
+        self.free_p          = float(cfg['free_prob'])
+        self.p_min           = float(cfg['p_min'])
+        self.p_max           = float(cfg['p_max'])
+        self.publish_hz      = float(cfg.get('publish_rate', 1.0))  # Hz
+
+        # Declare and override ROS2 parameters
+        # Match declared parameter names to attribute names
+        param_map = {
+            'occupancy_grid_topic': 'occupancy_topic',
+            'point_cloud_topic':    'pc_topic',
+            'pose_topic':           'pose_topic',
+            'frame_id':             'frame_id',
+            'grid_resolution':      'grid_resolution',
+            'grid_origin':          'grid_origin',
+            'prior_prob':           'prior_p',
+            'occupied_prob':        'occ_p',
+            'free_prob':            'free_p',
+            'p_min':                'p_min',
+            'p_max':                'p_max',
+            'publish_rate':         'publish_hz'
+        }
+        for param_name, attr_name in param_map.items():
+            self.declare_parameter(param_name, getattr(self, attr_name))
+            setattr(self, attr_name, self.get_parameter(param_name).value)
+
+        # Log-odds conversion factors
+        self.l0        = self.prob_to_log_odds(self.prior_p)
+        self.l_occ     = self.prob_to_log_odds(self.occ_p)
+        self.l_free    = self.prob_to_log_odds(self.free_p)
+        self.l_min     = self.prob_to_log_odds(self.p_min)
+        self.l_max     = self.prob_to_log_odds(self.p_max)
+
+        # Sparse map & dynamic bounds
+        self.occupancy_map = {}  # {(i,j): log_odds}
+        self.min_x = math.inf; self.max_x = -math.inf
+        self.min_y = math.inf; self.max_y = -math.inf
+
+        # Robot pose
+        self.Qw = 1.0; self.Qx = self.Qy = self.Qz = 0.0
         self.pose_x = self.pose_y = self.pose_z = 0.0
 
-        # Publishers & Subscribers
-        self.occupancy_grid_pub = self.create_publisher(
-            OccupancyGrid, self.occupancy_grid_topic, 10
-        )
-        self.create_subscription(
-            PoseStamped, self.pose_topic, self.pose_callback, 10
-        )
-        self.create_subscription(
-            PointCloud2, self.point_cloud_topic,
-            self.point_cloud_callback, 10
-        )
+        # CvBridge (for future use)
+        self.bridge = CvBridge()
 
-    def pose_callback(self, msg):
+        # Publishers & subscribers
+        self.pub = self.create_publisher(OccupancyGrid, self.occupancy_topic, 10)
+        self.create_subscription(PoseStamped, self.pose_topic, self.pose_cb, 10)
+        self.create_subscription(PointCloud2, self.pc_topic, self.pc_cb, 10)
+
+        # Timers
+        self.publish_timer = self.create_timer(1.0/self.publish_hz, self.publish_map)
+
+        # Flags
+        self.received_pose = False
+        self.received_pc   = False
+
+    def pose_cb(self, msg):
         self.received_pose = True
-        self.pose_x = msg.pose.position.x
-        self.pose_y = msg.pose.position.y
-        self.pose_z = msg.pose.position.z
+        o = msg.pose.orientation
+        t = msg.pose.position
+        self.Qx, self.Qy, self.Qz, self.Qw = o.x, o.y, o.z, o.w
+        self.pose_x, self.pose_y, self.pose_z = t.x, t.y, t.z
 
-    def point_cloud_callback(self, msg):
-        if not self.received_pose:
-            self.get_logger().warn("Skipping update: no pose yet")
-            return
-
-        # read points
-        points = pc2.read_points(
-            msg, field_names=("x","y","z"), skip_nans=True
-        )
-        # sensor origin in grid coords
-        sx = int((self.pose_x - self.grid_origin[0]) / self.grid_resolution)
-        sy = int((self.pose_y - self.grid_origin[1]) / self.grid_resolution)
-
-        # update each beam
-        for x_w, y_w, _ in points:
-            gx = int((x_w - self.grid_origin[0]) / self.grid_resolution)
-            gy = int((y_w - self.grid_origin[1]) / self.grid_resolution)
-            if not (0 <= gx < self.grid_width and 0 <= gy < self.grid_height):
-                continue
-            # cells along beam
-            line = bresenham(sx, sy, gx, gy)
-            # free cells (all except endpoint)
-            for cx, cy in line[:-1]:
-                self.occupancy_map[cy, cx] += (self.l_free - self.l0)
-            # occupied cell at end
-            ex, ey = line[-1]
-            self.occupancy_map[ey, ex] += (self.l_occ - self.l0)
-
-        # clamp
-        np.clip(self.occupancy_map, self.l_min, self.l_max,
-                out=self.occupancy_map)
-
-        # publish
-        self.publish_occupancy_grid()
-
-    def publish_occupancy_grid(self):
-        """Convert log-odds map → probabilities → [0..100], then publish."""
-        grid_msg = OccupancyGrid()
-        grid_msg.header = Header()
-        grid_msg.header.stamp = self.get_clock().now().to_msg()
-        grid_msg.header.frame_id = self.frame_id
-
-        # metadata
-        meta = MapMetaData()
-        meta.resolution = self.grid_resolution
-        meta.width      = self.grid_width
-        meta.height     = self.grid_height
-        origin = Pose()
-        origin.position.x = self.grid_origin[0]
-        origin.position.y = self.grid_origin[1]
-        origin.orientation = Quaternion(
-            x=0.0, y=0.0, z=0.0, w=1.0
-        )
-        meta.origin = origin
-        grid_msg.info = meta
-
-        # flatten map: log-odds → probability → occupancy [0..100]
-        probs = 1 - 1/(1 + np.exp(self.occupancy_map))
-        flat  = (probs * 100).astype(np.int8).flatten().tolist()
-        grid_msg.data = flat
-
-        self.occupancy_grid_pub.publish(grid_msg)
+    def pc_cb(self, msg):
+        if not self.received_pc:
+            self.received_pc = True
+        points = pc2.read_points(msg, field_names=("x","y","z"), skip_nans=True)
+        pts = np.fromiter(points, dtype=np.float32).reshape(-1,3)
+        self.update_map(pts)
 
     def prob_to_log_odds(self, p):
-        return np.log(p / (1 - p))
+        return np.log(p / (1.0 - p))
 
-# -----------------------------------
-# Main Entry Point
-# -----------------------------------
+    def bresenham(self, x0, y0, x1, y1):
+        cells = []
+        dx = abs(x1-x0); dy = abs(y1-y0)
+        sx = 1 if x1>x0 else -1; sy = 1 if y1>y0 else -1
+        err = dx - dy
+        x, y = x0, y0
+        while True:
+            cells.append((x,y))
+            if x==x1 and y==y1:
+                break
+            e2 = 2*err
+            if e2 > -dy:
+                err -= dy; x += sx
+            if e2 < dx:
+                err += dx; y += sy
+        return cells
+
+    def update_map(self, pts):
+        if not self.received_pose:
+            return
+        rx = int((self.pose_x - self.grid_origin[0]) / self.grid_resolution)
+        ry = int((self.pose_y - self.grid_origin[1]) / self.grid_resolution)
+        R = quat2mat([self.Qw, self.Qx, self.Qy, self.Qz])
+        for p in pts:
+            w = R.dot(p) + np.array([self.pose_x, self.pose_y, self.pose_z])
+            gx = int((w[0]-self.grid_origin[0]) / self.grid_resolution)
+            gy = int((w[1]-self.grid_origin[1]) / self.grid_resolution)
+            ray = self.bresenham(rx, ry, gx, gy)
+            for cell in ray[:-1]:
+                val = self.occupancy_map.get(cell, self.l0) + self.l_free
+                self.occupancy_map[cell] = np.clip(val, self.l_min, self.l_max)
+                self.min_x = min(self.min_x, cell[0]); self.max_x = max(self.max_x, cell[0])
+                self.min_y = min(self.min_y, cell[1]); self.max_y = max(self.max_y, cell[1])
+            end = ray[-1]
+            val = self.occupancy_map.get(end, self.l0) + self.l_occ
+            self.occupancy_map[end] = np.clip(val, self.l_min, self.l_max)
+            self.min_x = min(self.min_x, end[0]); self.max_x = max(self.max_x, end[0])
+            self.min_y = min(self.min_y, end[1]); self.max_y = max(self.max_y, end[1])
+
+    def publish_map(self):
+        if not self.occupancy_map:
+            return
+        min_x, max_x = int(self.min_x), int(self.max_x)
+        min_y, max_y = int(self.min_y), int(self.max_y)
+        width  = max_x - min_x + 1
+        height = max_y - min_y + 1
+        grid = np.full((height, width), self.l0, dtype=np.float32)
+        for (i,j), l in self.occupancy_map.items():
+            grid[j-min_y, i-min_x] = l
+        prob = 1.0 - 1.0/(1.0+np.exp(grid))
+        data = (prob*100).astype(np.int8).flatten().tolist()
+        og = OccupancyGrid()
+        og.header = Header()
+        og.header.stamp = self.get_clock().now().to_msg()
+        og.header.frame_id = self.frame_id
+        og.info.resolution = self.grid_resolution
+        og.info.width = width
+        og.info.height = height
+        og.info.origin.position.x = self.grid_origin[0] + min_x*self.grid_resolution
+        og.info.origin.position.y = self.grid_origin[1] + min_y*self.grid_resolution
+        og.info.origin.orientation.w = 1.0
+        og.data = data
+        self.pub.publish(og)
+
+
 def main(args=None):
     rclpy.init(args=args)
-    config = load_config()
-    node = OccupancyGridNode(config)
+    cfg = load_config()
+    node = OccupancyGridNode(cfg)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -217,5 +195,5 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__=='__main__':
     main()
